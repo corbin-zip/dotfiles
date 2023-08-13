@@ -1,4 +1,6 @@
-# The Voidrice (Luke Smith <https://lukesmith.xyz>'s dotfiles)
+# corbin's dotfiles
+
+Forked from LukeSmithxyz/voidrice. Everything below is from the original README until I finish updating it --
 
 These are the dotfiles deployed by [LARBS](https://larbs.xyz) and as seen on
 [my YouTube channel](https://youtube.com/c/lukesmithxyz).
