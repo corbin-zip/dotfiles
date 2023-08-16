@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# A simple, mostly ChatGPT-written timer widget for dwmblocks.
+# It will toggle whether or not mpc is playing/paused at the end
+# of the timer. I mostly use it for "pomodoros."
+
+# Known bug: it automatically starts a timer on boot!
+
+# Initial time in seconds (20 minutes)
+INITIAL_TIME=$((20 * 60))
+
+# Time adjustment interval in seconds (30 seconds)
+ADJUSTMENT=$((30))
+
+# File to store remaining time
+TIMER_FILE="/tmp/dwmblocks_timer"
+
+# File to store total length of timer
+TOTAL_FILE="/tmp/dwmblocks_total_timer"
+
+# Function to start the countdown
+countdown() {
+	echo $(($(date +%s) + $(cat $TOTAL_FILE))) >$TIMER_FILE
+}
+
+# If the timer files are empty, initialize them
+if [[ ! -s $TIMER_FILE || ! -s $TOTAL_FILE ]]; then
+	echo $INITIAL_TIME >$TOTAL_FILE
+	countdown
+fi
+
+# If the block is clicked, reset the countdown
+if [[ $BLOCK_BUTTON == "1" ]]; then
+	countdown
+# If the block is scrolled up, increase the timer
+elif [[ $BLOCK_BUTTON == "4" ]]; then
+	echo $(($(cat $TOTAL_FILE) + ADJUSTMENT)) >$TOTAL_FILE
+# If the block is scrolled down, decrease the timer
+elif [[ $BLOCK_BUTTON == "5" && $(($(cat $TOTAL_FILE) - ADJUSTMENT)) -ge 30 ]]; then
+	echo $(($(cat $TOTAL_FILE) - ADJUSTMENT)) >$TOTAL_FILE
+fi
+
+# Calculate remaining time
+TIMER=$(($(cat $TIMER_FILE) - $(date +%s)))
+
+# If time is up, print the emoji
+if ((TIMER <= 0)); then
+	if [[ $(cat $TIMER_FILE) != "0" ]]; then
+		mpc toggle
+		echo "0" >$TIMER_FILE
+	fi
+	echo "⏲️ $(date -u -d @$(cat $TOTAL_FILE) +'%M:%S')"
+else
+	# Otherwise, format the remaining time as mm:ss and print it along with the total time
+	echo "$(date -u -d @${TIMER} +'%M:%S')/$(date -u -d @$(cat $TOTAL_FILE) +'%M:%S')"
+fi
