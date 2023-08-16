@@ -1,7 +1,7 @@
 {
 	"name": "Vimium C",
-	"@time": "8/13/2023, 5:33:53 PM",
-	"time": 1691962433359,
+	"@time": "8/14/2023, 8:07:16 PM",
+	"time": 1692058036723,
 	"environment": {
 		"extension": "1.99.995",
 		"platform": "linux",
@@ -26,7 +26,7 @@
 		},
 		{
 			"passKeys": "",
-			"pattern": ":https://leetcode.com/"
+			"pattern": ":https://www.duolingo.com/"
 		}
 	],
 	"keyLayout": 20,
@@ -38,6 +38,8 @@
 		"map <a-s-j> zoomOut",
 		""
 	],
+	"nextPatterns": "next,more,newer,>,›,→,»,≫,>>",
+	"previousPatterns": "prev,previous,back,older,<,‹,←,«,≪,<<",
 	"searchEngines": [
 		"bi|bing: https://www.bing.com/search?q=%s \\",
 		"  blank=https://www.bing.com/ Bing",
@@ -71,7 +73,7 @@
 		"js\\:|Js: javascript:\\ $S; JavaScript",
 		""
 	],
-	"searchUrl": "https://duckduckgo.com/?q=$s DuckDuckGo",
+	"searchUrl": "https://searx.be/search?q=$s Searx",
 	"vimSync": true,
 	"ignoreCapsLock": 2
 }
