@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# A simple, mostly ChatGPT-written "do not disturb" widget for dwmblocks.
+# It will pause/unpause dunst, and keep track of the number of waiting
+# notifications. I frequently use it for "pomodoros"
+
+# Function to check the current status of dunst
+function check_status() {
+    # Check if dunst is currently paused
+    paused=$(dunstctl is-paused)
+
+    # If dunst is paused, display number of waiting notifications with a "mute" emoji.
+    # Else, display a "bell" emoji to indicate notifications are active.
+    if [ "$paused" == "true" ]; then
+        waiting=$(dunstctl count waiting)
+        echo "🔕: $waiting"
+    else
+        echo "🔔"
+    fi
+}
+
+# Check if the script is run with a left-click
+if [ "$BLOCK_BUTTON" = "1" ]; then
+    # Toggle the pause state of dunst
+    dunstctl set-paused toggle
+    # Signal dwmblocks to update the status
+    pkill -RTMIN+30 dwmblocks
+fi
+
+# Run the function to check the current status and print it
+check_status
