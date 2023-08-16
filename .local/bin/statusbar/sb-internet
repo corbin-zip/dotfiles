@@ -3,24 +3,51 @@
 # Show wifi 📶 and percent strength or 📡 if none.
 # Show 🌐 if connected to ethernet or ❎ if none.
 # Show 🔒 if a vpn connection is active
+# Show 🕸️ if a tailscale connection is active
+
+tailscale_connected() {
+	tailscale status | grep -q '^[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*'
+}
 
 case $BLOCK_BUTTON in
-	1) "$TERMINAL" -e nmtui; pkill -RTMIN+4 dwmblocks ;;
-	3) notify-send "🌐 Internet module" "\- Click to connect
+1)
+	"$TERMINAL" -e nmtui
+	pkill -RTMIN+4 dwmblocks
+	;;
+3) if tailscale_connected; then
+	tailscale_output=$(tailscale status | awk '{ print $1, $2 }' | tr '\n' '\r')
+	notify-send "🕸️ tailscale status" "$tailscale_output" -i tailscale
+else
+	notify-send "🌐 Internet module" "\- Click to connect
 ❌: wifi disabled
 📡: no wifi connection
 📶: wifi connection with quality
 ❎: no ethernet
 🌐: ethernet working
 🔒: vpn is active
-" ;;
-	6) "$TERMINAL" -e "$EDITOR" "$0" ;;
+🕸️: tailscale is active
+"
+fi ;;
+6) "$TERMINAL" -e "$EDITOR" "$0" ;;
 esac
 
-if grep -xq 'up' /sys/class/net/w*/operstate 2>/dev/null ; then
+wifi_interface=$(ip addr | awk '/^[0-9]+: w/ {print $2}' | tr -d :)
+eth_interface=$(ip addr | awk '/^[0-9]+: e/ {print $2}' | tr -d :)
+
+if [ "$wifi_interface" ] && grep -xq 'up' /sys/class/net/"$wifi_interface"/operstate 2>/dev/null; then
 	wifiicon="$(awk '/^\s*w/ { print "📶", int($3 * 100 / 70) "% " }' /proc/net/wireless)"
-elif grep -xq 'down' /sys/class/net/w*/operstate 2>/dev/null ; then
-	grep -xq '0x1003' /sys/class/net/w*/flags && wifiicon="📡 " || wifiicon="❌ "
+elif [ "$wifi_interface" ]; then
+	grep -xq '0x1003' /sys/class/net/"$wifi_interface"/flags && wifiicon="📡 " || wifiicon="❌ "
 fi
 
-printf "%s%s%s\n" "$wifiicon" "$(sed "s/down/❎/;s/up/🌐/" /sys/class/net/e*/operstate 2>/dev/null)" "$(sed "s/.*/🔒/" /sys/class/net/tun*/operstate 2>/dev/null)"
+vpn_status=""
+if ip addr show proton0 2>/dev/null | grep -q "proton0.*UP"; then
+	vpn_status="🔒"
+fi
+
+tailscale_status=""
+if tailscale_connected; then
+	tailscale_status="🕸️"
+fi
+
+printf "%s%s%s%s\n" "$wifiicon" "$(sed "s/down/❎/;s/up/🌐/" /sys/class/net/"$eth_interface"/operstate 2>/dev/null)" "$vpn_status" "$tailscale_status"
