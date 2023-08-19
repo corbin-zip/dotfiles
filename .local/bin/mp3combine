@@ -1,0 +1,9 @@
+#!/bin/bash
+# quick and dirty (chatgpt-powered) script to take a directory
+# full of mp3s (01.mp3, 02.mp3, 03.mp3...) and combine them into
+# a single mp3.
+# i use this for audiobooks because i typically prefer the book
+# in a single, large file.
+
+ls *.mp3 | sort -V | awk '{printf "file '\''%s'\''\n", $0}' >files.txt
+ffmpeg -f concat -safe 0 -i files.txt -c copy output.mp3
