@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# explicitly declare page_numbers as an array
+declare -a page_numbers
+
+# list of "chapters"
+page_numbers=( 10 12 13 16 18 20 21 23 26 29 31 33 36 39 41 43 45 48 50 53 55 58 60 63 65 68 71 74 76 78 80 82 85 88 90 92 95 97 99 )
+
+total_pages=${#page_numbers[@]}
+random_index=$(shuf -i 0-$total_pages -n 1)
+stoic_pdf="$HOME/.local/share/larbs/stoic.pdf"
+
+zathura $stoic_pdf -P ${page_numbers[$random_index]}
