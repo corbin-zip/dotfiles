@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# uses a search terms with notmuch to find the term(s) within the last
+# 24 hours and display them in a relatively friendly way back to the user.
+# built with the help of chatgpt
+
+if [ $# -eq 0 ]; then
+  echo "Error: No search terms provided. Usage: mailfinder 'search terms'"
+  exit 1
+fi
+
+search_terms="$1"
+declare -A subjects_map
+text_block="text:"
+subject_block="subjects:"
+line_number=0
+subject_number=0
+
+threads=$(notmuch search --output=threads "($search_terms) and date:1d..")
+
+for thread in $threads; do
+  subject=$(notmuch show --format=json "$thread" | jq -r '.[][][0].headers.Subject')
+  short_subject="${subject:0:77}" # Shorten subject to the first 77 characters
+
+  if [ -z "${subjects_map[$subject]}" ]; then
+    subject_number=$((subject_number + 1))
+    subjects_map["$subject"]=$subject_number
+    subject_block+="\n$subject_number: $short_subject"
+  fi
+
+  lines=$(notmuch show --format=raw "$thread" | grep --color=always -i 'cassette\|vinyl\|record\|tape' | sed 's/<[^>]*>//g')
+
+  IFS=$'\n'
+  for line in $lines; do
+    line_number=$((line_number + 1))
+    current_subject_number=${subjects_map["$subject"]}
+    text_block+="\n$current_subject_number: $line"
+  done
+done
+
+echo -e "$text_block\n"
+echo -e "$subject_block\n"
