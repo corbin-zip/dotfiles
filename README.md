@@ -49,3 +49,7 @@ or clone the repo files directly to your home directory and install the
 ## Default Desktop Artwork
 
 Thomas Thiemeyer's *The Road to Samarkand* ([fb](https://www.facebook.com/t.thiemeyer/), [insta](https://www.instagram.com/tthiemeyer/), [shop](https://www.redbubble.com/de/people/TThiemeyer/shop))
+
+## randomstoic script & stoic.pdf
+
+`stoic.pdf` was authored by Grey Freeman and is licensed under the Creative Commons Attribution-NonCommercial-ShareAlive 4.0 International License. A copy of this license can be found here: http://creativecommons.org/licenses/by-nc-sa/4.0/
