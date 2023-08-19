@@ -1,0 +1,11 @@
+#!/bin/sh
+
+bookmark="$(xclip -o)"
+file="$HOME/.local/share/larbs/snippets"
+
+if grep -q "^$bookmark$" "$file"; then
+	notify-send "~sc/bookmarkthis" "$bookmark is already there!"
+else
+	notify-send "~sc/bookmarkthis" "$bookmark is saved!"
+	echo "$bookmark" >> "$file"
+fi
