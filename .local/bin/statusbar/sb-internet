@@ -24,7 +24,7 @@ else
 📶: wifi connection with quality
 ❎: no ethernet
 🌐: ethernet working
-🔒: vpn is active
+🔒: protonvpn is active
 🕸️: tailscale is active
 "
 fi ;;
