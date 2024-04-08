@@ -2,15 +2,15 @@
 
 # Syncs repositories and downloads updates, meant to be run as a cronjob.
 
-/usr/bin/notify-send "📦 Repository Sync" "Checking for package updates..."
+notify-send "📦 Repository Sync" "Checking for package updates..."
 
-sudo pacman -Syyuw --noconfirm || /usr/bin/notify-send "Error downloading updates.
+sudo pacman -Syyuw --noconfirm || notify-send "Error downloading updates.
 
 Check your internet connection, if pacman is already running, or run update manually to see errors."
 pkill -RTMIN+8 "${STATUSBAR:-dwmblocks}"
 
 if pacman -Qu | grep -v "\[ignored\]"; then
-	/usr/bin/notify-send "🎁 Repository Sync" "Updates available. Click statusbar icon (📦) for update."
+	notify-send "🎁 Repository Sync" "Updates available. Click statusbar icon (📦) for update."
 else
-	/usr/bin/notify-send "📦 Repository Sync" "Sync complete. No new packages for update."
+	notify-send "📦 Repository Sync" "Sync complete. No new packages for update."
 fi
