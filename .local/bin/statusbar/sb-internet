@@ -28,7 +28,7 @@ else
 🕸️: tailscale is active
 "
 fi ;;
-6) "$TERMINAL" -e "$EDITOR" "$0" ;;
+6) setsid -f "$TERMINAL" -e "$EDITOR" "$0" ;;
 esac
 
 wifi_interface=$(ip addr | awk '/^[0-9]+: w/ {print $2}' | tr -d :)
