@@ -28,7 +28,7 @@ for thread in $threads; do
     subject_block+="\n$subject_number: $short_subject"
   fi
 
-  lines=$(notmuch show --format=raw "$thread" | grep --color=always -i 'cassette\|vinyl\|record\|tape' | sed 's/<[^>]*>//g')
+  lines=$(notmuch show --format=raw "$thread" | grep --color=always -i $1 | sed 's/<[^>]*>//g')
 
   IFS=$'\n'
   for line in $lines; do
