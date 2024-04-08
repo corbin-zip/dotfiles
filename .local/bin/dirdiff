@@ -1,0 +1,48 @@
+#!/bin/bash
+
+DIR1="$1"
+DIR2="$2"
+
+if [ ! -d "$DIR1" ] || [ ! -d "$DIR2" ]; then
+  echo "Both arguments must be directories."
+  exit 1
+fi
+
+# Function to iterate through files and compare
+compare_files() {
+  local dir1="$1"
+  local dir2="$2"
+
+  for file1 in "$dir1"/*; do
+    if [ ! -f "$file1" ]; then
+      continue
+    fi
+
+    filename=$(basename "$file1")
+    file2="$dir2/$filename"
+
+    if [ -f "$file2" ]; then
+      checksum1=$(sha256sum "$file1" | awk '{print $1}')
+      checksum2=$(sha256sum "$file2" | awk '{print $1}')
+      if [ "$checksum1" != "$checksum2" ]; then
+        echo "Checksum mismatch: $file1 and $file2"
+      fi
+    else
+      echo "File only in $dir1: $filename"
+    fi
+  done
+}
+
+compare_files "$DIR1" "$DIR2"
+
+# Check for files only in DIR2, ignoring directories
+for file2 in "$DIR2"/*; do
+  if [ ! -f "$file2" ]; then
+    continue
+  fi
+
+  filename=$(basename "$file2")
+  if [ ! -f "$DIR1/$filename" ]; then
+    echo "File only in $DIR2: $filename"
+  fi
+done
