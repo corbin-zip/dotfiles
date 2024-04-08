@@ -99,6 +99,21 @@ set expandtab
         let NERDTreeBookmarksFile = '~/.vim' . '/NERDTreeBookmarks'
     endif
 
+" vimling:
+	nm <leader>d :call ToggleDeadKeys()<CR>
+	imap <leader>d <esc>:call ToggleDeadKeys()<CR>a
+	nm <leader>i :call ToggleIPA()<CR>
+	imap <leader>i <esc>:call ToggleIPA()<CR>a
+	nm <leader>q :call ToggleProse()<CR>
+	
+" vim-airline
+	if !exists('g:airline_symbols')
+  	    let g:airline_symbols = {}
+	endif
+	let g:airline_symbols.colnr = ' C:'
+	let g:airline_symbols.linenr = ' L:'
+	let g:airline_symbols.maxlinenr = '☰ '
+
 " Shortcutting split navigation, saving a keypress:
     map <C-h> <C-w>h
     map <C-j> <C-w>j
