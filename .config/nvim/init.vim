@@ -19,28 +19,9 @@ Plug 'vimwiki/vimwiki'
 Plug 'vim-airline/vim-airline'
 Plug 'tpope/vim-commentary'
 Plug 'ap/vim-css-color'
-"Plug 'ycm-core/YouCompleteMe'
-"Plug 'davidhalter/jedi'
-"Plug 'sbdchd/neoformat'
-"Plug 'deoplete-plugins/deoplete-clang'
-"Plug 'Shougo/deoplete.nvim'
 call plug#end()
 
-"let g:deoplete#sources#clang#libclang_path = '/usr/lib/libclang.so'
-"let g:deoplete#sources#clang#clang_header = '/usr/lib/clang/'
-
-" Here's an example which tells YCM to trigger semantic completion
-" after typing 3 "word" characters or an _ character.
-"let g:ycm_semantic_triggers =  {
-"  \   'c,cpp,objc': [ 're!\w{3}', '_' ],
-"  \ }
-
 let g:python3_host_prog = '/usr/bin/python3'
-
-"let g:ycm_global_ycm_extra_conf = $XDG_CONFIG_HOME . '/nvim/plugged/YouCompleteMe/.ycm_extra_conf.py'
-"if empty(g:ycm_global_ycm_extra_conf)
-"  let g:ycm_global_ycm_extra_conf = $HOME . '/.config/nvim/plugged/YouCompleteMe/.ycm_extra_conf.py'
-"endif
 
 let g:vimwiki_custom_wiki2html = $XDG_CONFIG_HOME . '/nvim/plugged/vimwiki/autoload/vimwiki/customwiki2html.sh'
 if empty(g:vimwiki_custom_wiki2html)
@@ -57,6 +38,7 @@ set noshowmode
 set noruler
 set laststatus=0
 set noshowcmd
+colorscheme vim
 
 " tabbing overall --
 set tabstop=4
@@ -84,31 +66,14 @@ set expandtab
 " Splits open at the bottom and right, which is non-retarded, unlike vim defaults.
     set splitbelow splitright
 
-" YcmCompleter mapping
-"    nmap <leader>gd :YcmCompleter GoToDefinition<CR>
-"    nmap <leader>gt :YcmCompleter GoToType<CR>
-"    nmap <leader>gi :YcmCompleter GoToImplementation<CR>
-"    nmap <leader>gf :YcmCompleter FixIt<CR>
-
 " Nerd tree
     map <leader>n :NERDTreeToggle<CR>
     autocmd bufenter * if (winnr("$") == 1 && exists("b:NERDTree") && b:NERDTree.isTabTree()) | q | endif
-    if has('nvim')
-        let NERDTreeBookmarksFile = stdpath('data') . '/NERDTreeBookmarks'
-    else
-        let NERDTreeBookmarksFile = '~/.vim' . '/NERDTreeBookmarks'
-    endif
+    let NERDTreeBookmarksFile = stdpath('data') . '/NERDTreeBookmarks'
 
-" vimling:
-	nm <leader>d :call ToggleDeadKeys()<CR>
-	imap <leader>d <esc>:call ToggleDeadKeys()<CR>a
-	nm <leader>i :call ToggleIPA()<CR>
-	imap <leader>i <esc>:call ToggleIPA()<CR>a
-	nm <leader>q :call ToggleProse()<CR>
-	
 " vim-airline
 	if !exists('g:airline_symbols')
-  	    let g:airline_symbols = {}
+		let g:airline_symbols = {}
 	endif
 	let g:airline_symbols.colnr = ' C:'
 	let g:airline_symbols.linenr = ' L:'
@@ -154,7 +119,7 @@ set expandtab
     cabbrev w!! execute 'silent! write !sudo tee % >/dev/null' <bar> edit!
 
 " Enable Goyo by default for mutt writing
-    autocmd BufRead,BufNewFile /tmp/neomutt* let g:goyo_width=80
+	autocmd BufRead,BufNewFile /tmp/neomutt* :Goyo 80 | call feedkeys("jk")
     autocmd BufRead,BufNewFile /tmp/neomutt* :Goyo | set bg=light
     autocmd BufRead,BufNewFile /tmp/neomutt* map ZZ :Goyo\|x!<CR>
     autocmd BufRead,BufNewFile /tmp/neomutt* map ZQ :Goyo\|q!<CR>
