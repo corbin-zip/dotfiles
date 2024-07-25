@@ -61,4 +61,5 @@ alias \
 
 alias \
     ls="lsd --group-directories-first" \
+    ll="lsd --group-directories-first -l" \
     tree="lsd --tree"
