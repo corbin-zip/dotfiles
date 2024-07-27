@@ -61,6 +61,6 @@ alias \
 
 alias \
     ls="lsd --group-directories-first" \
-    ll="lsd --group-directories-first -l" \
+    ll="lsd --group-directories-first -la" \
     tree="lsd --tree" \
     neofetch="fastfetch"
