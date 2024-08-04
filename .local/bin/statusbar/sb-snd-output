@@ -1,0 +1,40 @@
+#!/bin/bash
+
+SINKS=($(pactl list short sinks | awk '{print $2}'))
+CURRENT_SINK=$(pactl get-default-sink)
+
+toggle_sinks() {
+    CURRENT_INDEX=$(printf "%s\n" "${SINKS[@]}" | grep -nx "$CURRENT_SINK" | cut -d: -f1)
+
+    if [ -z "$CURRENT_INDEX" ]; then
+        notify-send "Audio Output" "Current sink not found in the list."
+        exit 1
+    fi
+
+    NEXT_INDEX=$(( (CURRENT_INDEX % ${#SINKS[@]}) + 1 ))
+    NEXT_SINK=${SINKS[NEXT_INDEX - 1]}
+
+    pactl set-default-sink "$NEXT_SINK"
+    notify-send "Audio Output" "Switched to $(pactl get-default-sink)"
+}
+
+case $BLOCK_BUTTON in
+    1) toggle_sinks ;;
+    2) pavucontrol ;;
+    3) notify-send "📼 Sound Output Toggler" "\- Shows Current sink.\n- Left click to toggle audio outputs.\n- Middle click to open pavucontrol.\n- Right click to open this message." ;;
+    6) "$TERMINAL" -e "$EDITOR" "$0" ;;
+esac
+
+# output current sink name
+CURRENT_NAME=$(pactl get-default-sink)
+SHORT_NAME=$(echo "$CURRENT_NAME" | awk -F'.' '{split($2, arr, "-"); print arr[1]}')
+
+# use first letter of each segment if shortname is empty
+if [ -z "$SHORT_NAME" ]; then
+    SHORT_NAME=$(echo "$CURRENT_NAME" | awk -F'[_-]' '{for(i=1;i<=NF;i++) printf "%s", substr($i,1,1)}')
+fi
+
+# default to unknown if string still empty
+[ -z "$SHORT_NAME" ] && SHORT_NAME="Unknown"
+
+echo "$SHORT_NAME"
