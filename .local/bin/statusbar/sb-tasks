@@ -22,7 +22,7 @@ case $BLOCK_BUTTON in
         tsp -l
         tput sgr0
         echo
-        tput cup $((lines / 3 + 5))
+        tput cup $((lines / 3 + 15))
         echo "Press Enter to continue"
         read
     ' ;;
