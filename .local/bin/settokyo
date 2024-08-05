@@ -1,0 +1,26 @@
+# Configuration files of applications that have their themes changed by pywal.
+dunstconf="${XDG_CONFIG_HOME:-$HOME/.config}/dunst/dunstrc"
+zathuraconf="${XDG_CONFIG_HOME:-$HOME/.config}/zathura/zathurarc"
+
+# Apply the tokyonight-moon theme using wal
+if command -v wal >/dev/null 2>&1 ; then
+    wal --theme tokyonight-moon -o "${XDG_CONFIG_HOME:-$HOME/.config}/wal/postrun" >/dev/null 2>&1
+    theme_name="tokyonight-moon"
+    notify-send "🎨 Applied wal theme" "$theme_name"
+else
+    notify-send "🎨 Error" "pywal is not installed."
+    exit 1
+fi
+
+# Restore or apply dunst configuration if necessary
+if [ -f "$dunstconf.bak" ]; then
+    unlink "$dunstconf" && mv "$dunstconf.bak" "$dunstconf"
+fi
+
+# Restore or apply zathura configuration if necessary
+if [ -f "$zathuraconf.bak" ]; then
+    unlink "$zathuraconf" && mv "$zathuraconf.bak" "$zathuraconf"
+fi
+
+# If running, dwm hit the key to refresh the color scheme.
+pidof dwm >/dev/null && xdotool key super+F5
