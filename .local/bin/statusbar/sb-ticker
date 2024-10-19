@@ -33,7 +33,7 @@ getchange() {
 updateprice() { curl -sfm 10 "$url/$tickers" --output "$pricefile" || rm -f "$pricefile" ; }
 
 case $BLOCK_BUTTON in
-    1) setsid "$TERMINAL" -e less -Srf "$pricefile" ;;
+    1) setsid "$TERMINAL" -e less -SRf "$pricefile" ;;
     2) notify-send -u low "Updating..." "Updating prices" ; updateme="1" ;;
     3) notify-send "Current prices:" "Current stock prices:\n<b>$(getchange)</b>
 
