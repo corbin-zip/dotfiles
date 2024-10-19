@@ -65,4 +65,5 @@ alias \
     ll="lsd --group-directories-first -la" \
     tree="lsd --tree" \
     neofetch="fastfetch" \
-    lg="lazygit"
+    lg="lazygit" \
+    cat="bat"
