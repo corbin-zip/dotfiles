@@ -13,6 +13,7 @@
 
 url="terminal-stocks.dev"
 pricefile="${XDG_CACHE_HOME:-$HOME/.cache}/stock-prices"
+marketfile="${XDG_CACHE_HOME:-$HOME/.cache}/market-prices"
 tickerfile="${XDG_CONFIG_HOME:-$HOME/.config}/tickers"
 
 [ -f "$tickerfile" ] && tickers="$(cat "$tickerfile")" || tickers="^GSPC,^DJI,^IXIC";
@@ -31,19 +32,21 @@ getchange() {
 }
 
 updateprice() { curl -sfm 10 "$url/$tickers" --output "$pricefile" || rm -f "$pricefile" ; }
+updatemarket() { curl -sfm 10 "$url/market-summary" --output "$marketfile" || rm -f "$marketfile" ; }
 
 case $BLOCK_BUTTON in
-    1) setsid "$TERMINAL" -e less -SRf "$pricefile" ;;
+    1) setsid "$TERMINAL" -e moar "$pricefile" ;;
     2) notify-send -u low "Updating..." "Updating prices" ; updateme="1" ;;
     3) notify-send "Current prices:" "Current stock prices:\n<b>$(getchange)</b>
 
 LEFT MOUSE BUTTON: show price file
 MIDDLE MOUSE BUTTON: update stock prices
 RIGHT MOUSE BUTTON: Get stock overview" ;;
+    4) setsid "$TERMINAL" -e moar "$marketfile" ;;
     6) setsid -f "$TERMINAL" -e "$EDITOR" "$0" ;;
 esac
 
-[ -n "$updateme" ] && updateprice
+[ -n "$updateme" ] && updateprice && updatemarket
 
 [ -f "$pricefile" ] && getchange
 
