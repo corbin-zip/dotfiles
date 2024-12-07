@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # This file runs when a DM logs you into a graphical session.
-# If you use startx/xinit like a Chad, this file will also be sourced.
+# If you use startx/xinit, this file will also be sourced.
 
 xrandr --dpi 96		# Set DPI. User may want to use a larger number for larger screens.
 setbg &			# set the background with the `setbg` script
@@ -13,5 +13,12 @@ for program in $autostart; do
 	pidof -sx "$program" || "$program" &
 done >/dev/null 2>&1
 
+if command -v ya > /dev/null
+then
+    git clone https://github.com/BennyOe/tokyo-night.yazi.git ~/.config/yazi/flavors/tokyo-night.yazi
+    ya pack -a yazi-rs/plugins:git
+    ya pack -a yazi-rs/plugins:smart-enter
+fi
+
 # Ensure that xrdb has finished running before moving on to start the WM/DE.
-[ -n "$xrdbpid" ] && wait "$xrdbpid"
+# [ -n "$xrdbpid" ] && wait "$xrdbpid"
