@@ -1,0 +1,35 @@
+# from: https://yazi-rs.github.io/docs/tips
+[[manager.prepend_keymap]]
+on = "<C-n>"
+run = '''
+    shell 'dragon-drop --and-exit --on-top "$@"' --confirm
+'''
+desc = "Open the drag and drop utility"
+
+[[manager.prepend_keymap]]
+on = "!"
+run = 'shell "$SHELL" --block --confirm'
+desc = "Open shell in the current directory"
+
+[[manager.prepend_keymap]]
+on = ["g", "D"]
+run = 'cd ~/Downloads'
+desc = "Open ~/Downloads"
+
+[[manager.prepend_keymap]]
+on = ["g", "d"]
+run = 'cd ~/Documents'
+desc = "Open ~/Documents"
+
+[[manager.prepend_keymap]]
+on = "l"
+run = 'plugin --sync smart-enter'
+desc = "Enter the child directory, or open the file"
+
+[[manager.prepend_keymap]]
+on = "T"
+when = '[[selected]] is_directory'
+run = '''
+    shell 'picard "$@"' --confirm
+'''
+desc = "Open Picard with the selected directory"
