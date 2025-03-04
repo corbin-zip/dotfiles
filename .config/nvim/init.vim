@@ -19,7 +19,11 @@ Plug 'vimwiki/vimwiki'
 Plug 'vim-airline/vim-airline'
 Plug 'tpope/vim-commentary'
 Plug 'ap/vim-css-color'
+Plug 'epwalsh/obsidian.nvim'
+Plug 'nvim-lua/plenary.nvim'
 call plug#end()
+
+lua require('obsidian-config')
 
 let g:python3_host_prog = '/usr/bin/python3'
 
@@ -28,8 +32,10 @@ if empty(g:vimwiki_custom_wiki2html)
   let g:vimwiki_custom_wiki2html = $HOME . '/.config/nvim/plugged/vimwiki/autoload/vimwiki/customwiki2html.sh'
 endif
 
+colorscheme vim
+
 set title
-set bg=light
+set bg=dark
 set go=a
 set mouse=a
 set nohlsearch
@@ -38,7 +44,6 @@ set noshowmode
 set noruler
 set laststatus=0
 set noshowcmd
-colorscheme vim
 
 " tabbing overall --
 set tabstop=4
@@ -69,7 +74,11 @@ set expandtab
 " Nerd tree
     map <leader>n :NERDTreeToggle<CR>
     autocmd bufenter * if (winnr("$") == 1 && exists("b:NERDTree") && b:NERDTree.isTabTree()) | q | endif
-    let NERDTreeBookmarksFile = stdpath('data') . '/NERDTreeBookmarks'
+    if has('nvim')
+        let NERDTreeBookmarksFile = stdpath('data') . '/NERDTreeBookmarks'
+    else
+        let NERDTreeBookmarksFile = '~/.vim' . '/NERDTreeBookmarks'
+    endif
 
 " vim-airline
 	if !exists('g:airline_symbols')
@@ -77,7 +86,8 @@ set expandtab
 	endif
 	let g:airline_symbols.colnr = ' C:'
 	let g:airline_symbols.linenr = ' L:'
-	let g:airline_symbols.maxlinenr = '☰ '
+	let g:airline_symbols.maxlinenr = ' '
+	let g:airline#extensions#whitespace#symbol = '!'
 
 " Shortcutting split navigation, saving a keypress:
     map <C-h> <C-w>h
@@ -119,8 +129,9 @@ set expandtab
     cabbrev w!! execute 'silent! write !sudo tee % >/dev/null' <bar> edit!
 
 " Enable Goyo by default for mutt writing
-	autocmd BufRead,BufNewFile /tmp/neomutt* :Goyo 80 | call feedkeys("jk")
-    autocmd BufRead,BufNewFile /tmp/neomutt* :Goyo | set bg=light
+    autocmd BufRead,BufNewFile /tmp/neomutt* let g:goyo_width=80
+    " autocmd BufRead,BufNewFile /tmp/neomutt* :Goyo | set bg=light | set formatoptions-=t | set linebreak
+    autocmd BufRead,BufNewFile /tmp/neomutt* :Goyo 80 | set bg=dark | set formatoptions-=t | set linebreak
     autocmd BufRead,BufNewFile /tmp/neomutt* map ZZ :Goyo\|x!<CR>
     autocmd BufRead,BufNewFile /tmp/neomutt* map ZQ :Goyo\|q!<CR>
 
