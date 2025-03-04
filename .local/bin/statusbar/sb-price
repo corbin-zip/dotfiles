@@ -22,8 +22,13 @@ updateprice() { temp="$(mktemp)"
 
 [ -d "$dir" ] || mkdir -p "$dir"
 
-[ "$(stat -c %x "$pricefile" 2>/dev/null | cut -d' ' -f1)" != "$(date '+%Y-%m-%d')" ] &&
-	updateprice "$1"
+updateprice() { curl -sf \
+	--fail-early "${denom}.${url}/1${target}" "${denom}.${url}/${target}${interval}" \
+	--output "$pricefile" --output "$chartfile" ||
+	rm -f "$pricefile" "$chartfile" ;}
+
+[ "${filestat%% *}" != "$(date '+%Y-%m-%d')" ] &&
+	updateme="1"
 
 case $BLOCK_BUTTON in
 	1) setsid "$TERMINAL" -e less -Srf "$chartfile" ;;

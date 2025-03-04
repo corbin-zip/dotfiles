@@ -20,12 +20,10 @@ unset command
 # }
 
 se() {
-    s=("${HOME}/.local/bin/"**/*(.))
+	s=("${HOME}/.local/bin/"**/*(.))
 	c="$(print -lnr ${s:t:r} | fzf)"
 	[[ "${c}" ]] && "${EDITOR}" ${${(M)s:#*/${c}*}[1]}
 }
-
-
 
 # Verbosity and settings that you pretty much just always are going to want.
 alias \
