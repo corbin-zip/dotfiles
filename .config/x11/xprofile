@@ -3,27 +3,32 @@
 # This file runs when a DM logs you into a graphical session.
 # If you use startx/xinit, this file will also be sourced.
 
-xrandr --dpi 200 & # Set DPI. User may want to use a larger number for larger screens.
-sh ./.screenlayout/currentbutslower.sh &
-#setbg &			# set the background with the `setbg` script
-#bgpicker.py &
-#setbg_bee &
+DEVICE="cz desktop"
+USE_XRDB=true
 
-#settokyo &
-#protonmail-bridge &
-#synology-drive &
+if [ "$USE_XRDB" = true ]; then
+    xrdb ${XDG_CONFIG_HOME:-$HOME/.config}/x11/xresources & xrdbpid=$!
+fi
 
-xrdb ${XDG_CONFIG_HOME:-$HOME/.config}/x11/xresources & xrdbpid=$!	# Uncomment to use Xresources colors/settings on startup
-
-#autostart="mpd picom dunst unclutter pipewire wireplumber synology-drive remaps"
-autostart="mpd picom dunst unclutter remaps settokyo protonmail-bridge synology-drive"
+case "$DEVICE" in
+    "cz desktop")
+        xrandr --dpi 200 &
+        sh ./.screenlayout/currentbutslower.sh &
+        autostart="mpd picom dunst unclutter remaps settokyo protonmail-bridge synology-drive"
+        redshift -P -O 3300 &
+        rivalcfg -s 1100 -S 1300 &
+        ;;
+    "default" | *)
+        # Set DPI. User may want to use a larger number for larger screens.
+        xrandr --dpi 96
+        setbg &
+        autostart="mpd picom dunst unclutter remapd"
+        ;;
+esac
 
 for program in $autostart; do
 	pidof -s "$program" || "$program" &
 done >/dev/null 2>&1
-
-redshift -P -O 3300 &
-rivalcfg -s 1100 -S 1300 &
 
 if command -v ya > /dev/null
 then
@@ -33,4 +38,6 @@ then
 fi
 
 # Ensure that xrdb has finished running before moving on to start the WM/DE.
-[ -n "$xrdbpid" ] && wait "$xrdbpid"
+if [ "$USE_XRDB" = true ]; then
+    [ -n "$xrdbpid" ] && wait "$xrdbpid"
+fi
