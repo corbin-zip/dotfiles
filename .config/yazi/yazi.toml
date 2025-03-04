@@ -1,10 +1,10 @@
 [manager]
-# linemode = "mtime"
-sort_by = "natural"
+linemode = "size"
+sort_by = "mtime"
 sort_dir_first = true
 sort_translit = true
 show_symlink = true
-#sort_reverse = true
+sort_reverse = true
 # mouse = [ "click", "scroll", "drag" ]
 
 [preview]
@@ -17,12 +17,12 @@ edit = [
     { run = 'code -w %*', block = true,  desc = "code (block)",   for = "windows" },
 ]
 
-[[plugin.prepend_fetchers]]
-id   = "git"
-name = "*"
-run  = "git"
+# [[plugin.prepend_fetchers]]
+# id   = "git"
+# name = "*"
+# run  = "git"
 
-[[plugin.prepend_fetchers]]
-id   = "git"
-name = "*/"
-run  = "git"
+# [[plugin.prepend_fetchers]]
+# id   = "git"
+# name = "*/"
+# run  = "git"
