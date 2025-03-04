@@ -3,11 +3,24 @@
 # This script is called on startup to remap keys.
 # Decrease key repeat delay to 300ms and increase key repeat rate to 50 per second.
 xset r rate 300 50
-# Map the caps lock key to super, and map the menu key to right super.
+
+# Reset existing key options to avoid conflicts
+setxkbmap -option ''
+
+# Remap Caps Lock to Super and the Alt key to Super, Menu key to Windows key
 setxkbmap -option caps:super,altwin:menu_win
-# When caps lock is pressed only once, treat it as escape.
-killall xcape 2>/dev/null ; xcape -e 'Super_L=Escape'
+
+# Ensure xcape is not running to apply new settings cleanly
+killall xcape 2>/dev/null
+
+# Apply xmodmap customizations
+xmodmap -e "remove mod1 = Alt_R"    # If needed, depends on your keyboard layout
+xmodmap -e "keycode 108 = Super_R"             # Remap right Alt to Super_R, adapt keycode if needed
+xmodmap -e "add mod4 = Super_R"                # Make sure it's recognized as a Super key
+
+# Restart xcape to apply all settings
+killall xcape 2>/dev/null ; xcape -e "Super_L=Escape;Super_R=Escape"
+
 # Turn off caps lock if on since there is no longer a key for it.
-xset -q | grep -q "Caps Lock:\s*on" && xdotool key Caps_Lock
-# Disable mouse acceleration
-xset m 0 0
+xset -q | grep "Caps Lock:\s*on" && xdotool key Caps_Lock
+xset m 0 0 # disable mouse acceleration
