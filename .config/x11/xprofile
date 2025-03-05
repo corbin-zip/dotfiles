@@ -18,15 +18,16 @@ case "$DEVICE" in
         redshift -P -O 3300 &
         rivalcfg -s 1100 -S 1300 &
         ;;
-    "cz laptop")
+    "cz x220")
         xrandr --dpi 100 &
         setbg ~/sdrive/pictures/wallpapers/x220/0.png &
         autostart="mpd picom dunst unclutter remaps settokyo synology-drive"
         redshift -P -O 3300 &
-        # i think these are broken:
-        xinput --set-prop 11 325 -0.5 & # slow down trackpoint
-        xinput --set-prop 13 325 -0.5 & # slow down usb mouse
-        xinput --set-prop 10 313 1 &    # natural scrolling touchpad
+        # enable natural scrolling on touchpad & decrease sensitivity of trackpoint
+        tp_id=$(xinput list --id-only "TPPS/2 IBM TrackPoint")
+        tpad_id=$(xinput list --id-only "SynPS/2 Synaptics TouchPad")
+        [ -n "$tp_id" ] && xinput --set-prop "$tp_id" "libinput Accel Speed" -0.5 &
+        [ -n "$tpad_id" ] && xinput --set-prop "$tpad_id" "libinput Natural Scrolling Enabled" 1 &
         ;;
     "default" | *)
         # Set DPI. User may want to use a larger number for larger screens.
