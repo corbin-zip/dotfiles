@@ -14,7 +14,7 @@ case "$DEVICE" in
     "cz desktop")
         xrandr --dpi 200 &
         sh ./.screenlayout/currentbutslower.sh &
-        autostart="mpd picom dunst unclutter remaps settokyo protonmail-bridge synology-drive"
+        autostart="mpd picom dunst unclutter remaps settokyo protonmail-bridge synology-drive yams"
         redshift -P -O 3300 &
         rivalcfg -s 1100 -S 1300 &
         ;;
