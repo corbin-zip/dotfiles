@@ -3,7 +3,7 @@
 # This file runs when a DM logs you into a graphical session.
 # If you use startx/xinit, this file will also be sourced.
 
-DEVICE="cz desktop"
+DEVICE="default"
 USE_XRDB=true
 
 if [ "$USE_XRDB" = true ]; then
