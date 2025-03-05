@@ -23,7 +23,7 @@ Plug 'epwalsh/obsidian.nvim'
 Plug 'nvim-lua/plenary.nvim'
 call plug#end()
 
-lua require('obsidian-config')
+" lua require('obsidian-config')
 
 let g:python3_host_prog = '/usr/bin/python3'
 
