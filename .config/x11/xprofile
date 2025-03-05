@@ -18,6 +18,16 @@ case "$DEVICE" in
         redshift -P -O 3300 &
         rivalcfg -s 1100 -S 1300 &
         ;;
+    "cz laptop")
+        xrandr --dpi 100 &
+        setbg ~/sdrive/pictures/wallpapers/x220/0.png &
+        autostart="mpd picom dunst unclutter remaps settokyo synology-drive"
+        redshift -P -O 3300 &
+        # i think these are broken:
+        xinput --set-prop 11 325 -0.5 & # slow down trackpoint
+        xinput --set-prop 13 325 -0.5 & # slow down usb mouse
+        xinput --set-prop 10 313 1 &    # natural scrolling touchpad
+        ;;
     "default" | *)
         # Set DPI. User may want to use a larger number for larger screens.
         xrandr --dpi 96
