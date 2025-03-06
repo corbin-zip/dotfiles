@@ -94,9 +94,6 @@ colorscheme vim
     map <C-l> <C-w>l
 
 " Replace ex mode with gq
-    map Q gq
-
-" Replace ex mode with gq
 	map Q gq
 
 " Check file in shellcheck:
