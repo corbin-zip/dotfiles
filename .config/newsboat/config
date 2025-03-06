@@ -55,6 +55,5 @@ highlight article ":.*\\(link\\)$" cyan default
 highlight article ":.*\\(image\\)$" blue default
 highlight article ":.*\\(embedded flash\\)$" magenta default
 
-
 datetime-format "%d"
 articlelist-format "%4i %D %t"

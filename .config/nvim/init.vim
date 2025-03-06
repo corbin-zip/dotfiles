@@ -51,6 +51,8 @@ set shiftwidth=4
 set softtabstop=4
 set expandtab
 
+colorscheme vim
+
 " Some basics:
     nnoremap c "_c
     set nocompatible
@@ -74,11 +76,7 @@ set expandtab
 " Nerd tree
     map <leader>n :NERDTreeToggle<CR>
     autocmd bufenter * if (winnr("$") == 1 && exists("b:NERDTree") && b:NERDTree.isTabTree()) | q | endif
-    if has('nvim')
-        let NERDTreeBookmarksFile = stdpath('data') . '/NERDTreeBookmarks'
-    else
-        let NERDTreeBookmarksFile = '~/.vim' . '/NERDTreeBookmarks'
-    endif
+    let NERDTreeBookmarksFile = stdpath('data') . '/NERDTreeBookmarks'
 
 " vim-airline
 	if !exists('g:airline_symbols')
@@ -97,6 +95,9 @@ set expandtab
 
 " Replace ex mode with gq
     map Q gq
+
+" Replace ex mode with gq
+	map Q gq
 
 " Check file in shellcheck:
     map <leader>s :!clear && shellcheck -x %<CR>

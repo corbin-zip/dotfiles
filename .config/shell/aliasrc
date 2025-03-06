@@ -4,25 +4,19 @@
 [ -x "$(command -v nvim)" ] && alias vim="nvim" vimdiff="nvim -d"
 
 # Use $XINITRC variable if file exists.
-[ -f "$XINITRC" ] && alias startx="startx $XINITRC"
+[ -f "$XINITRC" ] && alias startx='startx $XINITRC'
 
-[ -f "$MBSYNCRC" ] && alias mbsync="mbsync -c $MBSYNCRC"
+[ -f "$MBSYNCRC" ] && alias mbsync='mbsync -c $MBSYNCRC'
 
 # sudo not required for some system commands
-for command in mount umount sv pacman updatedb su shutdown poweroff reboot; do
+for command in mount umount sv pacman updatedb su shutdown poweroff reboot ; do
     alias $command="sudo $command"
-done
-unset command
-
-# se() {
-#     choice="$(find ~/.local/bin -mindepth 1 -printf '%P\n' | fzf)"
-#     [ -f "$HOME/.local/bin/$choice" ] && $EDITOR "$HOME/.local/bin/$choice"
-# }
+done; unset command
 
 se() {
-	s=("${HOME}/.local/bin/"**/*(.))
-	c="$(print -lnr ${s:t:r} | fzf)"
-	[[ "${c}" ]] && "${EDITOR}" ${${(M)s:#*/${c}*}[1]}
+    s=("${HOME}/.local/bin/"**/*(.))
+    c="$(print -lnr ${s:t:r} | fzf)"
+    [[ "${c}" ]] && "${EDITOR}" ${${(M)s:#*/${c}*}[1]}
 }
 
 # Verbosity and settings that you pretty much just always are going to want.
@@ -53,8 +47,8 @@ alias \
     trem="transmission-remote" \
     YT="youtube-viewer" \
     sdn="shutdown -h now" \
-    e="$EDITOR" \
-    v="$EDITOR" \
+    e='$EDITOR' \
+    v='$EDITOR' \
     p="pacman" \
     xi="sudo xbps-install" \
     xr="sudo xbps-remove -R" \
@@ -63,7 +57,7 @@ alias \
 alias \
     lf="lfub" \
     magit="nvim -c MagitOnly" \
-    ref="shortcuts >/dev/null; source ${XDG_CONFIG_HOME:-$HOME/.config}/shell/shortcutrc ; source ${XDG_CONFIG_HOME:-$HOME/.config}/shell/shortcutenvrc ; source ${XDG_CONFIG_HOME:-$HOME/.config}/shell/zshnameddirrc"
+    ref='shortcuts >/dev/null; source ${XDG_CONFIG_HOME:-$HOME/.config}/shell/shortcutrc ; source ${XDG_CONFIG_HOME:-$HOME/.config}/shell/shortcutenvrc ; source ${XDG_CONFIG_HOME:-$HOME/.config}/shell/zshnameddirrc'
 
 alias \
     ls="lsd --group-directories-first" \
