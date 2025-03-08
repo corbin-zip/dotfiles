@@ -12,7 +12,7 @@ fi
 
 case "$DEVICE" in
     "cz desktop")
-        xrandr --dpi 200 &
+        xrandr --dpi 180 &
         sh ./.screenlayout/currentbutslower.sh &
         autostart="mpd picom dunst unclutter remaps settokyo protonmail-bridge synology-drive yams"
         redshift -P -O 3300 &
