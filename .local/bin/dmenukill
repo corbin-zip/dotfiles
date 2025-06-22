@@ -4,14 +4,14 @@
 lines="-l 20"
 
 selected="$(ps -a -u $USER |
-	dmenu -i -p "Type to search and select process to kill" \
+	dmenu -i -c \
 		$lines $colors $font |
 	awk '{print $1" "$4}')"
 
 if [[ ! -z $selected ]]; then
 
 	answer="$(echo -e "Yes\nNo" |
-		dmenu -i -p "$selected will be killed, are you sure?" \
+		dmenu -i -c -p "$selected will be killed, ok?" \
 			$lines $colors $font)"
 
 	if [[ $answer == "Yes" ]]; then
