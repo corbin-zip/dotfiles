@@ -19,6 +19,14 @@ case "$DEVICE" in
         rivalcfg -s 1100 -S 1300 &
         xwallpaper --zoom "/home/carbon/.local/share/bg" &
         ;;
+    "cz t480")
+        xrandr --dpi 150 &
+        # sh ./.screenlayout/currentbutslower.sh &
+        autostart="picom dunst unclutter remapd settokyo protonmail-bridge synology-drive"
+        redshift -P -O 3300 &
+        # xwallpaper --zoom "/home/carbon/.local/share/bg" &
+        setbg &
+        ;;
     "cz x220")
         xrandr --dpi 100 &
         setbg ~/sdrive/pictures/wallpapers/x220/0.png &
