@@ -1,0 +1,10 @@
+#!/bin/sh
+# instapaper-creds file should be in format:
+# accountemail@provider.com:passw0rd12here
+
+read auth < ~/.config/newsboat/instapaper-creds
+url="$1"
+curl -fsS --user "$auth" \
+  --data-urlencode "url=$url" \
+  https://www.instapaper.com/api/add
+notify-send "Instapaper" "Added: $url"
