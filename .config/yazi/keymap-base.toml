@@ -12,16 +12,6 @@ run = 'shell "$SHELL" --block --confirm'
 desc = "Open shell in the current directory"
 
 [[mgr.prepend_keymap]]
-on = ["g", "D"]
-run = 'cd ~/Downloads'
-desc = "Open ~/Downloads"
-
-[[mgr.prepend_keymap]]
-on = ["g", "d"]
-run = 'cd ~/Documents'
-desc = "Open ~/Documents"
-
-[[mgr.prepend_keymap]]
 on = "l"
 run = 'plugin smart-enter'
 desc = "Enter the child directory, or open the file"
@@ -36,7 +26,7 @@ run = '''
 desc = "Open Picard with the selected directory"
 
 [[mgr.prepend_keymap]]
-on = ["g", "s"]
+on = ["g", "s", "l"]
 when = '[[selected]] is_directory'
 run = '''
     shell 'scrobble "$0"' --confirm --orphan
