@@ -1,55 +1,70 @@
-# corbin's dotfiles
+# Corbin's dotfiles
 
-Forked from LukeSmithxyz/voidrice. Everything below is from the original README until I finish updating it --
+Corbin's dotfiles for an X11/dwm desktop on Arch Linux.
 
-These are the dotfiles deployed by [LARBS](https://larbs.xyz) and as seen on
-[my YouTube channel](https://youtube.com/c/lukesmithxyz).
+## Deployment
 
-- Very useful scripts are in `~/.local/bin/`
-- Settings for:
-	- vim/nvim (text editor)
-	- zsh (shell)
-	- lf (file manager)
-	- mpd/ncmpcpp (music)
-	- nsxiv (image/gif viewer)
-	- mpv (video player)
-	- other stuff like xdg default programs, inputrc and more, etc.
-- I try to minimize what's directly in `~` so:
-	- All configs that can be in `~/.config/` are.
-	- Some environmental variables have been set in `~/.zprofile` to move configs into `~/.config/`
-- Bookmarks in text files used by various scripts (like `~/.local/bin/shortcuts`)
-	- File bookmarks in `~/.config/shell/bm-files`
-	- Directory bookmarks in `~/.config/shell/bm-dirs`
+[CARBS](https://github.com/corbin-zip/carbs) is the install script for this setup. It handles package installation, symlinking these dotfiles, and configuring the full environment from a fresh Arch install.
 
-## Usage
+## Paired programs
 
-These dotfiles are intended to go with numerous suckless programs I use:
+These dotfiles are intended to be used alongside:
 
-- [dwm](https://github.com/lukesmithxyz/dwm) (window manager)
-- [dwmblocks](https://github.com/lukesmithxyz/dwmblocks) (statusbar)
-- [st](https://github.com/lukesmithxyz/st) (terminal emulator)
+- [dwm](https://github.com/corbin-zip/dwm) — window manager
+- [dwmblocks](https://github.com/corbin-zip/dwmblocks) — status bar
+- [st](https://github.com/corbin-zip/st) — terminal emulator
 
-I also recommend trying out
-[mutt-wizard](https://github.com/lukesmithxyz/mutt-wizard), which additionally
-works with this setup. It gives you an easy-to-install terminal-based email
-client regardless of your email provider. It is integrated into these dotfiles
-as well.
+## Configuration
 
-## Install these dotfiles and all dependencies
+Settings live under `.config/` where possible. Configs include:
 
-Use [LARBS](https://larbs.xyz) to autoinstall everything:
+- **nvim** — text editor
+- **zsh** — shell (profile, aliases, functions)
+- **yazi / lf** — file managers
+- **mpd / ncmpcpp** — music daemon and client
+- **mpv** — video player
+- **nsxiv** — image viewer
+- **newsboat** — RSS reader
+- **btop** — system monitor
+- **lazygit** — git interface
+- **dunst** — notification daemon
+- **zathura** — document viewer
+- **x11** — xinitrc, xprofile, xresources
+- **pipewire / pulse** — audio
+- **wal** — color scheme / pywal hooks
 
-```
-curl -LO larbs.xyz/larbs.sh
-```
+## Scripts
 
-or clone the repo files directly to your home directory and install the
-[dependencies](https://github.com/LukeSmithxyz/LARBS/blob/master/static/progs.csv).
+General-purpose scripts are in `.local/bin/`. Notable ones:
 
-## Default Desktop Artwork
+- `shortcuts` — generates keybindings and shell aliases from bookmark files (see below)
+- `setbg` — sets the desktop wallpaper
+- `dmenu*` — various dmenu-driven utilities (mounts, bookmarks, recordings, etc.)
+- `linkhandler` — routes URLs to the appropriate program
+- `compiler` / `opout` — compile documents and open output
+- `sysact` — system actions menu (shutdown, reboot, etc.)
+- `remapd` / `remaps` — keyboard remapping for desktop/laptop
 
-Thomas Thiemeyer's *The Road to Samarkand* ([fb](https://www.facebook.com/t.thiemeyer/), [insta](https://www.instagram.com/tthiemeyer/), [shop](https://www.redbubble.com/de/people/TThiemeyer/shop))
+Statusbar scripts for dwmblocks are in `.local/bin/statusbar/`.
 
-## randomstoic script & stoic.pdf
+## Bookmark system
 
-`stoic.pdf` was authored by Grey Freeman and is licensed under the Creative Commons Attribution-NonCommercial-ShareAlive 4.0 International License. A copy of this license can be found here: http://creativecommons.org/licenses/by-nc-sa/4.0/
+Directory and file bookmarks are stored in plain text:
+
+- `.config/shell/bm-dirs` — directory bookmarks
+- `.config/shell/bm-files` — file bookmarks
+
+The `shortcuts` script reads these and generates:
+
+- shell aliases (`~/.config/shell/shortcutrc`)
+- env variables (`~/.config/shell/shortcutenvrc`)
+- zsh named directories (`~/.config/shell/zshnameddirrc`)
+- yazi `cd` keybindings (`~/.config/yazi/keymap.toml`)
+- lf `cd` keybindings (`~/.config/lf/shortcutrc`)
+- vim/nvim command-mode mappings (`~/.config/nvim/shortcuts.vim`)
+
+Shortcuts are regenerated automatically on login and whenever `bm-dirs` or `bm-files` is saved in nvim.
+
+---
+
+Originally forked from [LukeSmithxyz/voidrice](https://github.com/LukeSmithxyz/voidrice). It's also worth trying out [mutt-wizard](https://github.com/lukesmithxyz/mutt-wizard).
