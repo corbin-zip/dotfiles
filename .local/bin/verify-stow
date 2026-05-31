@@ -1,0 +1,96 @@
+#!/bin/sh
+# verify-stow: verify that all dotfiles are correctly stow'd into a home directory
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
+[ $# -eq 2 ] || die "Usage: $(basename "$0") <dotfiles-dir> <home-dir>"
+
+DOTFILES=$(realpath "$1") || die "Cannot resolve: $1"
+HOMEDIR=$(realpath "$2")  || die "Cannot resolve: $2"
+
+[ -d "$DOTFILES" ] || die "Not a directory: $DOTFILES"
+[ -d "$HOMEDIR" ]  || die "Not a directory: $HOMEDIR"
+
+ok=0
+errors=0
+tmpf=$(mktemp)
+trap 'rm -f "$tmpf"' EXIT
+
+# Resolve a symlink's immediate target to an absolute path (one hop only).
+# Using cd+pwd handles relative paths and .. without following further symlinks.
+resolve_one() {
+    raw=$(readlink "$1")
+    case "$raw" in
+        /*) printf '%s' "$raw" ;;
+        *)
+            parent=$(cd "$(dirname "$1")/$(dirname "$raw")" 2>/dev/null && pwd) || return 1
+            printf '%s/%s' "$parent" "$(basename "$raw")"
+            ;;
+    esac
+}
+
+# Check 1: every file in dotfiles has a correct symlink in home
+
+find "$DOTFILES" \
+    \( -path "$DOTFILES/.git" \
+       -o -path "$DOTFILES/.gitignore" \
+       -o -path "$DOTFILES/.gitmodules" \
+       -o -path "$DOTFILES/LICENSE" \
+       -o -path "$DOTFILES/README.md" \) -prune \
+    -o -not -type d -print | sort > "$tmpf"
+
+while IFS= read -r df; do
+    [ -n "$df" ] || continue
+    rel="${df#${DOTFILES}/}"
+    hp="$HOMEDIR/$rel"
+
+    if [ -L "$hp" ]; then
+        resolved=$(resolve_one "$hp") || resolved=""
+        if [ "$resolved" = "$df" ]; then
+            ok=$((ok + 1))
+        else
+            printf 'WRONG:    %s\n  link points to: %s\n  expected:       %s\n' \
+                "$hp" "$(readlink "$hp")" "$df"
+            errors=$((errors + 1))
+        fi
+    elif [ -e "$hp" ]; then
+        printf 'NOT LINK: %s  (real file; should be a symlink)\n' "$hp"
+        errors=$((errors + 1))
+    else
+        printf 'MISSING:  %s\n' "$hp"
+        errors=$((errors + 1))
+    fi
+done < "$tmpf"
+
+# Check 2: broken symlinks anywhere in home that point into dotfiles
+
+find "$HOMEDIR" -type l 2>/dev/null | sort > "$tmpf"
+
+while IFS= read -r link; do
+    [ -e "$link" ] && continue  # not broken, skip
+
+    raw=$(readlink "$link")
+    case "$raw" in
+        /*) abs="$raw" ;;
+        *)
+            abs=$(cd "$(dirname "$link")/$(dirname "$raw")" 2>/dev/null && pwd)/$(basename "$raw") \
+                || abs=""
+            ;;
+    esac
+
+    case "$abs" in
+        "$DOTFILES"/*)
+            printf 'STALE:    %s -> %s  (broken link into dotfiles)\n' "$link" "$raw"
+            errors=$((errors + 1))
+            ;;
+    esac
+done < "$tmpf"
+
+printf '\n'
+if [ "$errors" -eq 0 ]; then
+    printf 'All %d dotfile(s) correctly stow'\''d.\n' "$ok"
+else
+    printf '%d OK, %d issue(s) found.\n' "$ok" "$errors"
+fi
+
+[ "$errors" -eq 0 ]
