@@ -1,5 +1,7 @@
 #show-read-feeds no
 auto-reload yes
+reload-threads 10
+text-width 80
 
 external-url-viewer "urlscan -dc -r 'linkhandler {}'"
 
@@ -42,6 +44,7 @@ macro C set browser "youtube-viewer --comments=%u" ; open-in-browser ; set brows
 macro p set browser "peertubetorrent %u 480" ; open-in-browser ; set browser linkhandler
 macro P set browser "peertubetorrent %u 1080" ; open-in-browser ; set browser linkhandler
 macro i set browser "add-to-instapaper %u" ; open-in-browser ; set browser linkhandler
+# macro s set browser "open-with-smry %u" ; open-in-browser ; set browser linkhandler
 
 highlight all "---.*---" yellow
 highlight feedlist ".*(0/0))" black
@@ -56,5 +59,6 @@ highlight article ":.*\\(link\\)$" cyan default
 highlight article ":.*\\(image\\)$" blue default
 highlight article ":.*\\(embedded flash\\)$" magenta default
 
-datetime-format "%d"
-articlelist-format "%4i %D %t"
+datetime-format "%m-%d"
+# articlelist-format "%4i %D %t"
+articlelist-format "%D %t"
