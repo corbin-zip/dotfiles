@@ -2,6 +2,7 @@
 # instapaper-creds file should be in format:
 # accountemail@provider.com:passw0rd12here
 
+[ -z "$1" ] && exit 0
 read auth < ~/.config/newsboat/instapaper-creds
 url="$1"
 curl -fsS --user "$auth" \
