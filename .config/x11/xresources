@@ -1,8 +1,11 @@
+#include "../../.cache/wallust/colors.Xresources"
+
 !! Transparency (0-1):
 *.alpha: 0.8
 
 !! Set a default font and font size as below:
 *.font: monospace:size=12
+st.font: NotoSansM Nerd Font Mono:pixelsize=20
 
 /* name		dark	light */
 /* black	0	8 */
