@@ -1,5 +1,9 @@
 require("git"):setup()
 
+require("mime-ext.local"):setup {
+	fallback_file1 = true,
+}
+
 -- Add the user and group in the status line (from: https://yazi-rs.github.io/docs/tips#user-group-in-status)
 Status:children_add(function()
 	local h = cx.active.current.hovered

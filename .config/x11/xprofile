@@ -55,6 +55,7 @@ then
     ya pkg add BennyOe/tokyo-night
     ya pkg add yazi-rs/plugins:git
     ya pkg add yazi-rs/plugins:smart-enter
+    ya pkg add yazi-rs/plugins:mime-ext
 fi
 
 # Ensure that xrdb has finished running before moving on to start the WM/DE.
