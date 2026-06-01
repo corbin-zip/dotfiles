@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+#
+# Batch DV → ProRes 422 HQ conversion with mode-specific filters.
+# Usage:
+#   ./dv-convert.sh <directory>          # runs all 4 modes
+#   ./dv-convert.sh <directory> 24p      # pullup → pullup/
+#   ./dv-convert.sh <directory> 30p      # progressive passthrough → 30p/
+#   ./dv-convert.sh <directory> 60i30    # deinterlace to 30p → deinterlaced30p/
+#   ./dv-convert.sh <directory> 60i60    # deinterlace to 60p → deinterlaced60p/
+
+set -euo pipefail
+
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    echo "Usage: $0 <directory> [24p|30p|60i30|60i60]" >&2
+    echo "  Omit mode to run all four." >&2
+    exit 1
+fi
+
+input_dir="${1%/}"
+mode="${2:-all}"
+
+if [ ! -d "$input_dir" ]; then
+    echo "Error: '$input_dir' is not a directory" >&2
+    exit 1
+fi
+
+case "$mode" in
+    24p|30p|60i30|60i60|all) ;;
+    *) echo "Error: mode must be 24p, 30p, 60i30, 60i60, or omitted" >&2; exit 1 ;;
+esac
+
+shopt -s nullglob
+dv_files=("$input_dir"/*.dv)
+if [ ${#dv_files[@]} -eq 0 ]; then
+    echo "No .dv files found in '$input_dir'" >&2
+    exit 1
+fi
+
+# Common color/scaling tail used by every mode.
+# Order matters: scale to square pixels first, then color-matrix-convert.
+color_tail="scale=640:480:flags=lanczos,setsar=1,scale=in_range=tv:in_color_matrix=bt601:out_range=tv:out_color_matrix=bt709"
+
+# Common ffmpeg output args (codec, color tags, audio).
+common_args=(
+    -color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv
+    -c:v prores_ks -profile:v 3 -pix_fmt yuv422p10le
+    -c:a pcm_s16le
+)
+
+# Encode one file with given filter chain into given subdirectory.
+# $1 = mode label (used as dir name and filename suffix)
+# $2 = filter chain (everything before the color_tail)
+encode_mode() {
+    local label="$1"
+    local pre_filter="$2"
+    local out_subdir="$input_dir/$label"
+    mkdir -p "$out_subdir"
+
+    local count=0 skipped=0 failed=0
+    echo
+    echo "### Mode: $label → $out_subdir"
+
+    for dv_file in "${dv_files[@]}"; do
+        local base output_file
+        base=$(basename "$dv_file" .dv)
+        output_file="$out_subdir/${base}_${label}.mov"
+
+        if [ -s "$output_file" ]; then
+            echo "Skip (exists): $output_file"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        echo "==> $dv_file"
+        if ffmpeg -hide_banner -loglevel warning -stats -i "$dv_file" \
+            -vf "${pre_filter},${color_tail}" \
+            "${common_args[@]}" \
+            "$output_file"; then
+            count=$((count + 1))
+        else
+            echo "FAILED: $dv_file" >&2
+            rm -f "$output_file"
+            failed=$((failed + 1))
+        fi
+    done
+
+    echo "[$label] Encoded: $count, skipped: $skipped, failed: $failed"
+}
+
+# The four mode definitions.
+run_24p()    { encode_mode "pullup"           "pullup,fps=24000/1001"; }
+run_30p()    { encode_mode "30p"              "setfield=prog"; }
+run_60i30()  { encode_mode "deinterlaced30p"  "bwdif=mode=send_frame:parity=bff"; }
+run_60i60()  { encode_mode "deinterlaced60p"  "bwdif=mode=send_field:parity=bff"; }
+
+case "$mode" in
+    24p)    run_24p ;;
+    30p)    run_30p ;;
+    60i30)  run_60i30 ;;
+    60i60)  run_60i60 ;;
+    all)
+        run_24p
+        run_30p
+        run_60i30
+        run_60i60
+        ;;
+esac
+
+echo
+echo "All done."

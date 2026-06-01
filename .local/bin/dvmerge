@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+#
+# dv-merge.sh — group dvgrab autosplit chunks back into per-take files.
+#
+# Splits ending at the max chunk size are treated as continuations.
+# A smaller-than-max file ends the current take; the next file starts a new one.
+# A run of one file (just one short file with no preceding cap-size files) is
+# still emitted as its own merged file for consistency.
+#
+# Usage: ./dv-merge.sh <directory>
+
+set -euo pipefail
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <directory>" >&2
+    exit 1
+fi
+
+input_dir="${1%/}"
+if [ ! -d "$input_dir" ]; then
+    echo "Error: '$input_dir' is not a directory" >&2
+    exit 1
+fi
+
+shopt -s nullglob
+mapfile -t dv_files < <(printf '%s\n' "$input_dir"/*.dv | sort)
+if [ ${#dv_files[@]} -eq 0 ]; then
+    echo "No .dv files found in '$input_dir'" >&2
+    exit 1
+fi
+
+# Determine the "cap" size: the most common size among files that aren't the
+# last one. Robust to whatever dvgrab is using (1000 MB here, but could differ).
+declare -A size_counts
+for f in "${dv_files[@]}"; do
+    sz=$(stat -c%s "$f")
+    size_counts[$sz]=$(( ${size_counts[$sz]:-0} + 1 ))
+done
+cap_size=0
+cap_count=0
+for sz in "${!size_counts[@]}"; do
+    if [ "${size_counts[$sz]}" -gt "$cap_count" ]; then
+        cap_size=$sz
+        cap_count=${size_counts[$sz]}
+    fi
+done
+
+human_size() {
+    numfmt --to=iec-i --suffix=B --format="%.1f" "$1"
+}
+
+# Build groups: each group ends on the first file smaller than cap_size.
+declare -a groups_serialized=()
+current_group=()
+for f in "${dv_files[@]}"; do
+    current_group+=("$f")
+    sz=$(stat -c%s "$f")
+    if [ "$sz" -lt "$cap_size" ]; then
+        # End of a group
+        groups_serialized+=("$(printf '%s\n' "${current_group[@]}")")
+        current_group=()
+    fi
+done
+# If trailing files happen to all be cap-sized (unusual but possible), emit them
+# as a final group anyway.
+if [ ${#current_group[@]} -gt 0 ]; then
+    groups_serialized+=("$(printf '%s\n' "${current_group[@]}")")
+fi
+
+# Show plan
+echo "Cap size detected: $(human_size "$cap_size") (used by $cap_count files)"
+echo
+echo "Source files:"
+for f in "${dv_files[@]}"; do
+    sz=$(stat -c%s "$f")
+    printf '  %-40s  %s\n' "$(basename "$f")" "$(human_size "$sz")"
+done
+echo
+echo "Proposed merges:"
+i=0
+for grp in "${groups_serialized[@]}"; do
+    i=$((i + 1))
+    out_name=$(printf 'merged-%03d.dv' "$i")
+    echo "  $out_name:"
+    while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        sz=$(stat -c%s "$f")
+        printf '    %-40s  %s\n' "$(basename "$f")" "$(human_size "$sz")"
+    done <<<"$grp"
+done
+echo
+
+read -r -p "Proceed with merge? [y/N] " reply
+case "$reply" in
+    [yY]|[yY][eE][sS]) ;;
+    *) echo "Aborted."; exit 0 ;;
+esac
+
+output_dir="$input_dir/merged"
+mkdir -p "$output_dir"
+
+i=0
+for grp in "${groups_serialized[@]}"; do
+    i=$((i + 1))
+    out_file=$(printf '%s/merged-%03d.dv' "$output_dir" "$i")
+
+    if [ -s "$out_file" ]; then
+        echo "Skip (exists): $out_file"
+        continue
+    fi
+
+    # Build cat arg list from the serialized group
+    files=()
+    while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        files+=("$f")
+    done <<<"$grp"
+
+    echo "==> $out_file (${#files[@]} parts)"
+    cat "${files[@]}" > "$out_file"
+done
+
+echo
+echo "Done. Output: $output_dir"
