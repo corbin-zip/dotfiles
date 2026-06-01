@@ -32,8 +32,6 @@ if empty(g:vimwiki_custom_wiki2html)
   let g:vimwiki_custom_wiki2html = $HOME . '/.config/nvim/plugged/vimwiki/autoload/vimwiki/customwiki2html.sh'
 endif
 
-colorscheme vim
-
 set title
 set bg=dark
 " set go=a
@@ -51,7 +49,11 @@ set shiftwidth=4
 set softtabstop=4
 set expandtab
 
-colorscheme vim
+colorscheme wal
+highlight Normal guibg=none
+highlight NonText guibg=none
+highlight Normal ctermbg=none
+highlight NonText ctermbg=none
 
 " Some basics:
     nnoremap c "_c
