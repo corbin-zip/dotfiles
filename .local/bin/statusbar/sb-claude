@@ -1,0 +1,84 @@
+#!/bin/sh
+# Shows remaining Claude usage as 🤖<5h>%/<7d>% (percent left in the rolling
+# 5-hour session window and the 7-day weekly window). Caches the API response
+# under ~/.cache/claudebar so renders are cheap and the endpoint isn't hammered.
+# Left click opens claude.ai in Firefox, middle click forces a refresh, right
+# click shows details.
+
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/claudebar"
+file="$cache/usage.json"
+cred="$HOME/.claude/.credentials.json"
+maxage=300	# don't refetch more often than this on an unattended refresh
+
+# Query the (undocumented) OAuth usage endpoint with the token Claude Code
+# stores in its credentials file. Only overwrites the cache on a sane response.
+fetch() {
+	[ -f "$cred" ] || return 1
+	token="$(jq -r '.claudeAiOauth.accessToken // empty' "$cred" 2>/dev/null)"
+	[ -n "$token" ] || return 1
+	resp="$(curl -s --max-time 5 https://api.anthropic.com/api/oauth/usage \
+		-H "Authorization: Bearer $token" \
+		-H "anthropic-beta: oauth-2025-04-20")"
+	echo "$resp" | jq -e '.five_hour.utilization' >/dev/null 2>&1 || return 1
+	mkdir -p "$cache"
+	printf '%s' "$resp" > "$file.tmp" && mv "$file.tmp" "$file"
+}
+
+# Reset timestamps come back as ISO 8601; fall back to epoch just in case.
+fmt_reset() {
+	[ -z "$1" ] && { printf '?'; return; }
+	case "$1" in
+		*[!0-9]*) date -d "$1"  +'%a %-I:%M%P' 2>/dev/null || printf '%s' "$1" ;;
+		*)        date -d "@$1" +'%a %-I:%M%P' 2>/dev/null || printf '%s' "$1" ;;
+	esac
+}
+
+info() {
+	[ -f "$file" ] || { notify-send "🤖 Claude usage module" \
+		"No data yet — middle click to refresh.
+(Not logged into Claude Code? Check $cred)"; return; }
+	IFS='|' read -r U5 R5 Q5 U7 R7 Q7 US RS QS <<EOF
+$(jq -r '[ (.five_hour.utilization|floor), ((100-.five_hour.utilization)|floor), (.five_hour.resets_at//""),
+           (.seven_day.utilization|floor), ((100-.seven_day.utilization)|floor), (.seven_day.resets_at//""),
+           (if .seven_day_sonnet then (.seven_day_sonnet.utilization|floor) else "" end),
+           (if .seven_day_sonnet then ((100-.seven_day_sonnet.utilization)|floor) else "" end),
+           (.seven_day_sonnet.resets_at//"") ] | join("|")' "$file" 2>/dev/null)
+EOF
+	sonnet=""
+	[ -n "$US" ] && sonnet="
+7d sonnet:  ${RS}% left  (${US}% used)
+  Resets $(fmt_reset "$QS")"
+	updated="$(date -d "@$(stat -c %Y "$file")" +'%-I:%M%P' 2>/dev/null)"
+	notify-send "🤖 Claude usage module" "5h session: ${R5}% left  (${U5}% used)
+  Resets $(fmt_reset "$Q5")
+7d  all:    ${R7}% left  (${U7}% used)
+  Resets $(fmt_reset "$Q7")${sonnet}
+
+Last Updated ${updated:-never}
+- Shows 🤖 5h%/7d% remaining
+- Left click: claude.ai in Firefox
+- Middle click: refresh now
+- Right click: shows this info"
+}
+
+case $BLOCK_BUTTON in
+	1) setsid -f firefox --new-window https://claude.ai >/dev/null 2>&1 ;;
+	2) fetch; pkill -RTMIN+20 "${STATUSBAR:-dwmblocks}" ;;
+	3) info ;;
+	6) setsid -f "$TERMINAL" -e "$EDITOR" "$0" ;;
+esac
+
+# Ensure we have data: fetch if the cache is missing, or if it's stale and this
+# is an unattended refresh (no button press).
+if [ ! -f "$file" ]; then
+	fetch
+elif [ -z "$BLOCK_BUTTON" ]; then
+	age=$(( $(date +%s) - $(stat -c %Y "$file" 2>/dev/null || echo 0) ))
+	[ "$age" -ge "$maxage" ] && fetch
+fi
+
+IFS='|' read -r H5 D7 <<EOF
+$(jq -r '[ ((100-.five_hour.utilization)|floor), ((100-.seven_day.utilization)|floor) ] | join("|")' "$file" 2>/dev/null)
+EOF
+
+[ -n "$H5" ] && echo "🤖${H5}%/${D7}%" || echo "🤖✕"
