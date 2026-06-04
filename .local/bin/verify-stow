@@ -1,9 +1,20 @@
 #!/bin/sh
-# verify-stow: verify that all dotfiles are correctly stow'd into a home directory
+# verify-stow: verify (and optionally fix) that all dotfiles are correctly stow'd into a home directory
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
-[ $# -eq 2 ] || die "Usage: $(basename "$0") <dotfiles-dir> <home-dir>"
+FIX=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -f|--fix) FIX=1; shift ;;
+        --) shift; break ;;
+        -*) die "Unknown option: $1" ;;
+        *) break ;;
+    esac
+done
+
+[ $# -eq 2 ] || die "Usage: $(basename "$0") [-f|--fix] <dotfiles-dir> <home-dir>"
 
 DOTFILES=$(realpath "$1") || die "Cannot resolve: $1"
 HOMEDIR=$(realpath "$2")  || die "Cannot resolve: $2"
@@ -13,11 +24,12 @@ HOMEDIR=$(realpath "$2")  || die "Cannot resolve: $2"
 
 ok=0
 errors=0
+fixed=0
+quit_fixing=0
 tmpf=$(mktemp)
 trap 'rm -f "$tmpf"' EXIT
 
 # Resolve a symlink's immediate target to an absolute path (one hop only).
-# Using cd+pwd handles relative paths and .. without following further symlinks.
 resolve_one() {
     raw=$(readlink "$1")
     case "$raw" in
@@ -29,10 +41,54 @@ resolve_one() {
     esac
 }
 
-# Check 1: every file in dotfiles has a correct symlink in home
+# Returns 0 if the path is inside a folded directory symlink pointing into dotfiles.
+# Stow "folds" a directory by replacing it with a single symlink to the whole package
+# subtree; files inside are real files reached through the parent symlink, not symlinks
+# themselves. These are OK and should not be flagged as NOT LINK.
+is_in_folded_dir() {
+    _ifd_dir=$(dirname "$1")
+    while [ "$_ifd_dir" != "$HOMEDIR" ] && [ "$_ifd_dir" != "/" ] && [ "$_ifd_dir" != "." ]; do
+        if [ -L "$_ifd_dir" ]; then
+            _ifd_target=$(readlink -f "$_ifd_dir" 2>/dev/null)
+            case "$_ifd_target" in
+                "$DOTFILES"/*) return 0 ;;
+            esac
+        fi
+        _ifd_dir=$(dirname "$_ifd_dir")
+    done
+    return 1
+}
+
+# Prompt the user about a proposed fix. Returns 0=apply, 1=skip.
+# Sets quit_fixing=1 if the user chooses to stop.
+prompt_fix() {
+    if [ "$quit_fixing" -eq 1 ]; then return 1; fi
+    printf '  Apply? [y/n/q] (y=fix, n=skip, q=stop fixing): '
+    read -r _pf_reply </dev/tty
+    case "$_pf_reply" in
+        y|Y) return 0 ;;
+        q|Q) quit_fixing=1; return 1 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Create a relative symlink at $1 pointing to $2 (absolute path), matching the
+# relative-link style that stow itself produces. The parent directory is created
+# if missing. -m lets realpath compute the relative path even when the parent
+# does not exist yet.
+make_symlink() {
+    _ms_rel=$(realpath -m --relative-to="$(dirname "$1")" "$2") || return 1
+    [ -n "$_ms_rel" ] || return 1
+    mkdir -p "$(dirname "$1")" && ln -s "$_ms_rel" "$1"
+}
+
+# ── Check 1: every file in dotfiles has a correct symlink in home ─────────────
+#
+# Pruned: any .git entry (handles nested submodule gitlinks too), plus top-level
+# repo meta-files that stow ignores and should never be symlinked into home.
 
 find "$DOTFILES" \
-    \( -path "$DOTFILES/.git" \
+    \( -name .git \
        -o -path "$DOTFILES/.gitignore" \
        -o -path "$DOTFILES/.gitmodules" \
        -o -path "$DOTFILES/LICENSE" \
@@ -52,22 +108,88 @@ while IFS= read -r df; do
             printf 'WRONG:    %s\n  link points to: %s\n  expected:       %s\n' \
                 "$hp" "$(readlink "$hp")" "$df"
             errors=$((errors + 1))
+            if [ "$FIX" -eq 1 ] && [ "$quit_fixing" -eq 0 ]; then
+                _rel=$(realpath -m --relative-to="$(dirname "$hp")" "$df")
+                printf '  Fix: rm %s\n       ln -s %s %s\n' "$hp" "$_rel" "$hp"
+                if prompt_fix; then
+                    # Guard: only ever rm something that is still a symlink, never a real file.
+                    if [ -L "$hp" ] && rm "$hp" && make_symlink "$hp" "$df"; then
+                        printf '  Fixed.\n'
+                        fixed=$((fixed + 1))
+                    else
+                        printf '  ERROR: fix failed.\n'
+                    fi
+                fi
+            fi
         fi
+
     elif [ -e "$hp" ]; then
-        printf 'NOT LINK: %s  (real file; should be a symlink)\n' "$hp"
-        errors=$((errors + 1))
+        if is_in_folded_dir "$hp"; then
+            # Stow folded this subtree into a single directory symlink; files are fine.
+            ok=$((ok + 1))
+        elif [ -d "$hp" ]; then
+            printf 'DIR:      %s  (real directory where a symlink is expected; cannot auto-fix)\n' "$hp"
+            errors=$((errors + 1))
+        else
+            printf 'NOT LINK: %s  (real file; should be a symlink to dotfiles)\n' "$hp"
+            errors=$((errors + 1))
+            if [ "$FIX" -eq 1 ] && [ "$quit_fixing" -eq 0 ]; then
+                _rel=$(realpath -m --relative-to="$(dirname "$hp")" "$df")
+                printf '  Dotfiles: %s\n  Home:     %s\n' "$df" "$hp"
+                if command -v diff >/dev/null 2>&1; then
+                    _diffout=$(diff -u "$df" "$hp" 2>/dev/null | head -60)
+                    if [ -n "$_diffout" ]; then
+                        printf '  Diff (--- dotfiles  +++ home):\n'
+                        printf '%s\n' "$_diffout" | sed 's/^/    /'
+                        printf '\n'
+                    else
+                        printf '  (files are identical)\n'
+                    fi
+                fi
+                _bak="${hp}.bak"
+                [ -e "$_bak" ] && _bak="${hp}.bak.$(date +%s)"
+                printf '  Fix: mv %s %s\n       ln -s %s %s\n' "$hp" "$_bak" "$_rel" "$hp"
+                printf '  (Home file backed up; symlink will point to dotfiles version)\n'
+                if prompt_fix; then
+                    if mv "$hp" "$_bak" && make_symlink "$hp" "$df"; then
+                        printf '  Fixed. Backup: %s\n' "$_bak"
+                        fixed=$((fixed + 1))
+                    else
+                        printf '  ERROR: fix failed.\n'
+                    fi
+                fi
+            fi
+        fi
+
     else
         printf 'MISSING:  %s\n' "$hp"
         errors=$((errors + 1))
+        if [ "$FIX" -eq 1 ] && [ "$quit_fixing" -eq 0 ]; then
+            _rel=$(realpath -m --relative-to="$(dirname "$hp")" "$df")
+            printf '  Fix: ln -s %s %s\n' "$_rel" "$hp"
+            if prompt_fix; then
+                if make_symlink "$hp" "$df"; then
+                    printf '  Fixed.\n'
+                    fixed=$((fixed + 1))
+                else
+                    printf '  ERROR: fix failed.\n'
+                fi
+            fi
+        fi
     fi
 done < "$tmpf"
 
-# Check 2: broken symlinks anywhere in home that point into dotfiles
+# ── Check 2: broken symlinks anywhere in home that point into dotfiles ────────
+#
+# The dotfiles repo itself is excluded so we never operate on repo-internal
+# symlinks (e.g. the sxiv→nsxiv alias committed in the repo).
 
-find "$HOMEDIR" -type l 2>/dev/null | sort > "$tmpf"
+find "$HOMEDIR" \
+    -path "$DOTFILES" -prune \
+    -o -type l -print 2>/dev/null | sort > "$tmpf"
 
 while IFS= read -r link; do
-    [ -e "$link" ] && continue  # not broken, skip
+    [ -e "$link" ] && continue  # not broken
 
     raw=$(readlink "$link")
     case "$raw" in
@@ -82,6 +204,18 @@ while IFS= read -r link; do
         "$DOTFILES"/*)
             printf 'STALE:    %s -> %s  (broken link into dotfiles)\n' "$link" "$raw"
             errors=$((errors + 1))
+            if [ "$FIX" -eq 1 ] && [ "$quit_fixing" -eq 0 ]; then
+                printf '  Fix: rm %s\n' "$link"
+                if prompt_fix; then
+                    # Guard: only rm if still a (broken) symlink.
+                    if [ -L "$link" ] && rm "$link"; then
+                        printf '  Fixed.\n'
+                        fixed=$((fixed + 1))
+                    else
+                        printf '  ERROR: fix failed.\n'
+                    fi
+                fi
+            fi
             ;;
     esac
 done < "$tmpf"
@@ -89,8 +223,13 @@ done < "$tmpf"
 printf '\n'
 if [ "$errors" -eq 0 ]; then
     printf 'All %d dotfile(s) correctly stow'\''d.\n' "$ok"
+elif [ "$FIX" -eq 1 ]; then
+    printf '%d OK, %d issue(s) found. %d fixed, %d remaining.\n' \
+        "$ok" "$errors" "$fixed" "$((errors - fixed))"
+    [ "$quit_fixing" -eq 1 ] && \
+        printf '(Stopped early — remaining issues were not reviewed.)\n'
 else
-    printf '%d OK, %d issue(s) found.\n' "$ok" "$errors"
+    printf '%d OK, %d issue(s) found. Run with -f to fix.\n' "$ok" "$errors"
 fi
 
-[ "$errors" -eq 0 ]
+[ "$((errors - fixed))" -eq 0 ]
