@@ -25,9 +25,24 @@ HOMEDIR=$(realpath "$2")  || die "Cannot resolve: $2"
 ok=0
 errors=0
 fixed=0
+ignored=0
 quit_fixing=0
 tmpf=$(mktemp)
 trap 'rm -f "$tmpf"' EXIT
+
+# Paths that are intentionally NOT plain stow symlinks because another script
+# manages them at runtime (e.g. setbg rewrites ~/.local/share/bg to point at the
+# current wallpaper). These are skipped entirely: never reported, never fixed.
+#
+# Matched against the path RELATIVE to the dotfiles/home root. Shell globs work.
+# To ignore more, add a `pattern) return 0 ;;` line below — e.g. pywal-generated
+# configs like  .config/zathura/zathurarc  or  .config/nvim/colors/wal.vim .
+is_ignored() {
+    case "$1" in
+        .local/share/bg) return 0 ;;
+        *) return 1 ;;
+    esac
+}
 
 # Resolve a symlink's immediate target to an absolute path (one hop only).
 resolve_one() {
@@ -99,6 +114,11 @@ while IFS= read -r df; do
     [ -n "$df" ] || continue
     rel="${df#${DOTFILES}/}"
     hp="$HOMEDIR/$rel"
+
+    if is_ignored "$rel"; then
+        ignored=$((ignored + 1))
+        continue
+    fi
 
     if [ -L "$hp" ]; then
         resolved=$(resolve_one "$hp") || resolved=""
@@ -191,6 +211,11 @@ find "$HOMEDIR" \
 while IFS= read -r link; do
     [ -e "$link" ] && continue  # not broken
 
+    if is_ignored "${link#${HOMEDIR}/}"; then
+        ignored=$((ignored + 1))
+        continue
+    fi
+
     raw=$(readlink "$link")
     case "$raw" in
         /*) abs="$raw" ;;
@@ -220,16 +245,19 @@ while IFS= read -r link; do
     esac
 done < "$tmpf"
 
+ign_note=""
+[ "$ignored" -gt 0 ] && ign_note=" ($ignored ignored)"
+
 printf '\n'
 if [ "$errors" -eq 0 ]; then
-    printf 'All %d dotfile(s) correctly stow'\''d.\n' "$ok"
+    printf 'All %d dotfile(s) correctly stow'\''d.%s\n' "$ok" "$ign_note"
 elif [ "$FIX" -eq 1 ]; then
-    printf '%d OK, %d issue(s) found. %d fixed, %d remaining.\n' \
-        "$ok" "$errors" "$fixed" "$((errors - fixed))"
+    printf '%d OK%s, %d issue(s) found. %d fixed, %d remaining.\n' \
+        "$ok" "$ign_note" "$errors" "$fixed" "$((errors - fixed))"
     [ "$quit_fixing" -eq 1 ] && \
         printf '(Stopped early — remaining issues were not reviewed.)\n'
 else
-    printf '%d OK, %d issue(s) found. Run with -f to fix.\n' "$ok" "$errors"
+    printf '%d OK%s, %d issue(s) found. Run with -f to fix.\n' "$ok" "$ign_note" "$errors"
 fi
 
 [ "$((errors - fixed))" -eq 0 ]
