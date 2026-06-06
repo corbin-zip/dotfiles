@@ -1,0 +1,34 @@
+#!/bin/sh
+# flatmouse: force the libinput "flat" pointer-acceleration profile on a mouse.
+#
+# Both the xinput device ID and the numeric property ID change between reboots
+# and replugs, and the accel profile resets to "adaptive" whenever the device
+# reconnects. This resolves the current device ID by name (parsing `xinput list`,
+# since xinput's own name lookup is unreliable) and re-applies the profile by
+# property *name*, so neither changing ID matters.
+#
+# Usage: flatmouse [device-name]   (default: "USB OPTICAL MOUSE", matched case-insensitively)
+
+name="${1:-USB OPTICAL MOUSE}"
+prop="libinput Accel Profile Enabled"   # referenced by name; its numeric ID is irrelevant
+values="0 1 0"                          # [adaptive flat custom] -> enable flat
+
+ids=$(xinput list 2>/dev/null | grep -i "$name" | grep -o 'id=[0-9]*' | cut -d= -f2)
+
+[ -n "$ids" ] || { printf 'flatmouse: no device matching "%s"\n' "$name" >&2; exit 1; }
+
+rc=1
+for id in $ids; do
+    # Only touch devices that actually expose the property (a mouse may also
+    # register a keyboard sub-device that has no accel profile).
+    xinput list-props "$id" 2>/dev/null | grep -qF "$prop" || continue
+    if xinput set-prop "$id" "$prop" $values 2>/dev/null; then
+        printf 'flatmouse: %s (id=%s) -> flat [%s]\n' "$name" "$id" "$values"
+        rc=0
+    else
+        printf 'flatmouse: failed to set "%s" on id=%s\n' "$prop" "$id" >&2
+    fi
+done
+
+[ "$rc" -eq 0 ] || printf 'flatmouse: "%s" found but no settable "%s" property\n' "$name" "$prop" >&2
+exit "$rc"
