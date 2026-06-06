@@ -19,22 +19,21 @@ toggle_sinks() {
 }
 
 case $BLOCK_BUTTON in
-    1) toggle_sinks ;;
+    1) dmenusink ;;
     2) pavucontrol ;;
-    3) notify-send "📼 Sound Output Toggler" "\- Shows Current sink.\n- Left click to toggle audio outputs.\n- Middle click to open pavucontrol.\n- Right click to open this message." ;;
+    3) notify-send "📼 Sound Output" "\- Shows current sink.\n- Left click: choose output (incl. Bluetooth).\n- Scroll: cycle outputs.\n- Middle click: open pavucontrol.\n- Right click: this message." ;;
+    4|5) toggle_sinks ;;
     6) "$TERMINAL" -e "$EDITOR" "$0" ;;
 esac
 
-# output current sink name
+# Show the first 3 letters of the sink's friendly description (e.g. "OpenRun
+# Pro 2 by Shokz" -> "Ope"), rather than the raw sink name (which for Bluetooth
+# is just the MAC address). Fall back to the raw name if there's no description.
 CURRENT_NAME=$(pactl get-default-sink)
-SHORT_NAME=$(echo "$CURRENT_NAME" | awk -F'.' '{split($2, arr, "-"); print arr[1]}')
+DESC=$(pactl --format=json list sinks 2>/dev/null | jq -r --arg d "$CURRENT_NAME" '.[] | select(.name == $d) | .description')
+[ -z "$DESC" ] && DESC="$CURRENT_NAME"
 
-# use first letter of each segment if shortname is empty
-if [ -z "$SHORT_NAME" ]; then
-    SHORT_NAME=$(echo "$CURRENT_NAME" | awk -F'[_-]' '{for(i=1;i<=NF;i++) printf "%s", substr($i,1,1)}')
-fi
-
-# default to unknown if string still empty
+SHORT_NAME=$(printf '%.3s' "$DESC")
 [ -z "$SHORT_NAME" ] && SHORT_NAME="Unknown"
 
 echo "$SHORT_NAME"

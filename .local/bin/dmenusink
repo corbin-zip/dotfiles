@@ -1,0 +1,83 @@
+#!/bin/sh
+# dmenusink: pick the default audio output via dmenu.
+#
+# Lists every current sink (marking the default) plus any paired Bluetooth audio
+# device that isn't connected yet; choosing the latter connects it first, then
+# routes to it. Active streams are moved to the chosen output too, so whatever is
+# already playing follows. Wired to the audio status block (sb-snd-output).
+#
+# Needs: pactl, jq, dmenu, notify-send, bluetoothctl (for the Bluetooth entries).
+
+default=$(pactl get-default-sink 2>/dev/null)
+
+# Make $1 the default sink and pull every active stream over to it.
+set_sink() {
+    pactl set-default-sink "$1" || return 1
+    pactl --format=json list sink-inputs 2>/dev/null | jq -r '.[].index' | while read -r i; do
+        [ -n "$i" ] && pactl move-sink-input "$i" "$1" 2>/dev/null
+    done
+}
+
+# Connect a paired BT device by MAC, wait (≤10s) for its sink, then route to it.
+connect_bt() {
+    _mac=$1
+    _frag=$(printf '%s' "$_mac" | tr ':' '_')
+    notify-send "🔵 Bluetooth" "Connecting…"
+    bluetoothctl connect "$_mac" >/dev/null 2>&1
+    _sink=""
+    _n=0
+    while [ "$_n" -lt 20 ]; do
+        _sink=$(pactl --format=json list sinks 2>/dev/null \
+            | jq -r --arg f "bluez_output.$_frag" '.[] | select(.name | startswith($f)) | .name' \
+            | head -n1)
+        [ -n "$_sink" ] && break
+        sleep 0.5
+        _n=$((_n + 1))
+    done
+    [ -n "$_sink" ] || { notify-send "🔵 Bluetooth" "Couldn't connect or no audio sink appeared."; exit 1; }
+    set_sink "$_sink"
+}
+
+# --- build the menu: hidden "label<TAB>kind<TAB>id" rows --------------------
+
+# Current sinks, default marked with a bullet.
+table=$(pactl --format=json list sinks 2>/dev/null | jq -r --arg d "$default" '
+    .[] | (if .name == $d then "● " else "  " end) + .description + "\tsink\t" + .name')
+
+# Paired Bluetooth audio devices that aren't already showing up as a sink.
+sink_names=$(pactl --format=json list sinks 2>/dev/null | jq -r '.[].name')
+bt=$(bluetoothctl devices 2>/dev/null | while read -r _ mac name; do
+    case "$mac" in
+        ??:??:??:??:??:??) ;;   # MAC-shaped
+        *) continue ;;
+    esac
+    bluetoothctl info "$mac" 2>/dev/null | grep -q "Audio Sink" || continue   # audio outputs only
+    frag=$(printf '%s' "$mac" | tr ':' '_')
+    printf '%s\n' "$sink_names" | grep -q "bluez_output.$frag" && continue     # already a live sink
+    printf '🔵 %s (connect)\tbt\t%s\n' "$name" "$mac"
+done)
+[ -n "$bt" ] && table="$table
+$bt"
+
+[ -n "$table" ] || { notify-send "📼 Audio Output" "No audio sinks found."; exit 1; }
+
+# --- prompt and dispatch ---------------------------------------------------
+
+chosen=$(printf '%s\n' "$table" | cut -f1 | dmenu -i -c -l 12 -p 'Audio output:') || exit 0
+[ -n "$chosen" ] || exit 0
+
+# Reverse-map the chosen label to its row. Pass the label via the environment so
+# awk treats it literally (no -v backslash processing).
+row=$(printf '%s\n' "$table" | chosen="$chosen" awk -F'\t' 'BEGIN{c=ENVIRON["chosen"]} $1==c {print; exit}')
+kind=$(printf '%s' "$row" | cut -f2)
+id=$(printf '%s' "$row" | cut -f3)
+
+case "$kind" in
+    sink) set_sink "$id" ;;
+    bt)   connect_bt "$id" ;;
+    *)    exit 0 ;;
+esac
+
+now=$(pactl --format=json list sinks 2>/dev/null | jq -r --arg d "$(pactl get-default-sink)" '
+    .[] | select(.name == $d) | .description')
+notify-send "📼 Audio Output" "Now: ${now:-unknown}"
