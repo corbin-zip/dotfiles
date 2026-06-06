@@ -1,0 +1,29 @@
+#!/bin/sh
+# sb-caffeine: dwmblocks indicator + toggle for screen-blanking inhibition.
+# Shows ☕ while blanking is inhibited (DPMS disabled), 💤 when normal.
+# MUST match the `signal` field in dwmblocks config.h.
+sig=29
+
+is_on() { xset q | grep -q "DPMS is Disabled"; }
+
+caffeinate() {
+    xset s off
+    xset -dpms
+    notify-send "☕ Caffeine" "Screen blanking inhibited."
+    pkill -RTMIN+"$sig" dwmblocks
+}
+
+decaffeinate() {
+    xset s default
+    xset +dpms
+    notify-send "💤 Caffeine" "Normal screen blanking restored."
+    pkill -RTMIN+"$sig" dwmblocks
+}
+
+case "$BLOCK_BUTTON" in
+    1) if is_on; then decaffeinate; else caffeinate; fi ;;
+    3) notify-send "☕ Caffeine" "- ☕ = screen kept awake (blanking/DPMS off).\n- 💤 = normal blanking.\n- Left click: toggle." ;;
+    6) "$TERMINAL" -e "$EDITOR" "$0" ;;
+esac
+
+is_on && echo "☕" || echo "💤"
