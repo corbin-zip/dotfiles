@@ -48,7 +48,7 @@ EOF
 	[ -n "$US" ] && sonnet="
 7d sonnet:  ${RS}% left  (${US}% used)
   Resets $(fmt_reset "$QS")"
-	updated="$(date -d "@$(stat -c %Y "$file")" +'%-I:%M%P' 2>/dev/null)"
+	updated="$(date -d "@$(stat -c %Y "$file")" +'%b%-d %-I:%M%P' 2>/dev/null)"
 	notify-send "🤖 Claude usage module" "5h session: ${R5}% left  (${U5}% used)
   Resets $(fmt_reset "$Q5")
 7d  all:    ${R7}% left  (${U7}% used)
