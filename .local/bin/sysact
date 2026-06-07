@@ -13,19 +13,9 @@ wmpid(){ # This function is needed if there are multiple instances of the window
 	echo "${tree%%)*}"
 }
 
-lock(){
-    mpc pause
-    pauseallmpv
-    wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
-    kill -44 $(pidof dwmblocks)
-    slock
-    wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
-    kill -44 $(pidof dwmblocks)
-}
-
 case "$(printf "🔫 kill\n🔒 lock\n🚪 leave $WM\n♻️ renew $WM\n🐻 hibernate\n🔃 reboot\n🖥️ shutdown\n💤 sleep\n📺 display off" | dmenu -i -c -l 10 -p 'Action: ')" in
     '🔫 kill') dmenukill ;;
-	'🔒 lock') lock ;;
+	'🔒 lock') lockscreen ;;
 	"🚪 leave $WM") kill -TERM "$(wmpid)" ;;
 	"♻️ renew $WM") kill -HUP "$(wmpid)" ;;
 	'🐻 hibernate') slock $ctl hibernate -i ;;

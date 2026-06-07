@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# Lock the screen, handling caffeine toggle and audio mute around slock.
+mpc pause
+pauseallmpv
+wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+kill -44 $(pidof dwmblocks)
+xset q | grep -q "DPMS is Disabled" && { xset s default; xset +dpms; pkill -RTMIN+29 dwmblocks; }
+slock
+wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+kill -44 $(pidof dwmblocks)
+pkill -RTMIN+29 dwmblocks
