@@ -7,7 +7,9 @@ url="${WTTRURL:-wttr.in}"
 weatherreport="${XDG_CACHE_HOME:-$HOME/.cache}/weatherreport"
 
 # Get a weather report from 'wttr.in' and save it locally.
-getforecast() { timeout --signal=1 2s curl -sf "$url/$LOCATION" > "$weatherreport" || exit 1; }
+# $LOCATION (secretsrc) picks the place; empty falls back to IP geolocation.
+# ?u forces US units regardless of where the IP (e.g. a VPN exit) appears to be.
+getforecast() { timeout --signal=1 10s curl -sf "$url/$LOCATION?u" > "$weatherreport" || exit 1; }
 
 # Forecast should be updated only once a day.
 checkforecast() {
@@ -34,17 +36,19 @@ readfile() { weatherdata="$(cat "$weatherreport")" ;}
 
 showweather() {
 	readfile
+	# shellcheck disable=SC2046,SC2183 # intentional: getdailyhighlow supplies two args
 	printf "☔%s 🥶%s° 🌞%s°\n" "$(getprecipchance)" $(getdailyhighlow)
 }
 
 case $BLOCK_BUTTON in
-	1) setsid -f "$TERMINAL" -e moar "$weatherreport" ;;
+	1) setsid -f "$TERMINAL" -e less "$weatherreport" ;;
 	2) getforecast && showweather ;;
 	3) notify-send "🌈 Weather module" "\- Left click for full forecast.
 - Middle click to update forecast.
+- Right click also signals dwmblocks.
 ☔: Chance of rain/snow
 🥶: Daily low
-🌞: Daily high" ;;
+🌞: Daily high" ; pkill -RTMIN+5 "${STATUSBAR:-dwmblocks}" ;;
 	6) setsid -f "$TERMINAL" -e "$EDITOR" "$0" ;;
 esac
 
