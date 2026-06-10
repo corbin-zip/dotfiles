@@ -78,6 +78,38 @@ bindkey -M vicmd '^[[P' vi-delete-char
 bindkey -M vicmd '^e' edit-command-line
 bindkey -M visual '^[[P' vi-delete
 
+# vi-mode yank/paste use the system clipboard instead of zsh's internal register.
+if command -v xclip >/dev/null 2>&1 && [ -n "$DISPLAY" ]; then
+	vi-yank-clip() {
+		zle vi-yank
+		print -rn -- "$CUTBUFFER" | xclip -selection clipboard
+	}
+	zle -N vi-yank-clip
+	bindkey -M vicmd 'y' vi-yank-clip
+	bindkey -M visual 'y' vi-yank-clip
+
+	vi-yank-eol-clip() {
+		zle vi-yank-eol
+		print -rn -- "$CUTBUFFER" | xclip -selection clipboard
+	}
+	zle -N vi-yank-eol-clip
+	bindkey -M vicmd 'Y' vi-yank-eol-clip
+
+	vi-put-after-clip() {
+		CUTBUFFER=$(xclip -selection clipboard -o 2>/dev/null) || return
+		zle vi-put-after
+	}
+	zle -N vi-put-after-clip
+	bindkey -M vicmd 'p' vi-put-after-clip
+
+	vi-put-before-clip() {
+		CUTBUFFER=$(xclip -selection clipboard -o 2>/dev/null) || return
+		zle vi-put-before
+	}
+	zle -N vi-put-before-clip
+	bindkey -M vicmd 'P' vi-put-before-clip
+fi
+
 # Load syntax highlighting; should be last.
 source /usr/share/zsh/plugins/fast-syntax-highlighting/fast-syntax-highlighting.plugin.zsh 2>/dev/null
 
