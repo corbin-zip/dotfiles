@@ -14,21 +14,23 @@ case "$DEVICE" in
     "spike")
         xrandr --dpi 180 &
         sh ./.screenlayout/currentbutslower.sh &
-        autostart="picom dunst unclutter remaps settokyo protonmail-bridge synology-drive"
+        autostart="picom dunst unclutter remaps protonmail-bridge synology-drive"
         redshift -P -O 3300 &
         rivalcfg -s 1100 -S 1300 &
         xwallpaper --zoom "${XDG_DATA_HOME:-$HOME/.local/share}/bg" &
+        restoretheme &
         ;;
     "gaia")
-        settokyo &
+        restoretheme &
         autostart="picom dunst unclutter remapd synology-drive"
         redshift -P -O 3300 &
         xwallpaper --zoom "${XDG_DATA_HOME:-$HOME/.local/share}/bg" &
         ;;
     "ganymede")
         xrandr --dpi 100 &
-        setbg ~/sdrive/pictures/wallpapers/x220/0.png &
-        autostart="mpd picom dunst unclutter remaps settokyo synology-drive"
+        xwallpaper --zoom "${XDG_DATA_HOME:-$HOME/.local/share}/bg" &
+        restoretheme &
+        autostart="mpd picom dunst unclutter remaps synology-drive"
         redshift -P -O 3300 &
         # enable natural scrolling on touchpad & decrease sensitivity of trackpoint
         tp_id=$(xinput list --id-only "TPPS/2 IBM TrackPoint")
@@ -39,7 +41,8 @@ case "$DEVICE" in
     *)
         # Set DPI. User may want to use a larger number for larger screens.
         xrandr --dpi 96
-        setbg &
+        xwallpaper --zoom "${XDG_DATA_HOME:-$HOME/.local/share}/bg" &
+        restoretheme &
         autostart="mpd picom dunst unclutter remapd"
         ;;
 esac

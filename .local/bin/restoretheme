@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# Re-apply the last-used wal scheme (run at X login). Falls back to the
+# house theme on a fresh machine with no saved palette yet.
+
+if [ -f "${XDG_CACHE_HOME:-$HOME/.cache}/wal/colors.json" ]; then
+	wal -R -n -o "${XDG_CONFIG_HOME:-$HOME/.config}/wal/postrun" >/dev/null 2>&1
+else
+	settokyo
+fi

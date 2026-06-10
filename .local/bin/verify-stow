@@ -35,8 +35,7 @@ trap 'rm -f "$tmpf"' EXIT
 # current wallpaper). These are skipped entirely: never reported, never fixed.
 #
 # Matched against the path RELATIVE to the dotfiles/home root. Shell globs work.
-# To ignore more, add a `pattern) return 0 ;;` line below — e.g. pywal-generated
-# configs like  .config/zathura/zathurarc  or  .config/nvim/colors/wal.vim .
+# To ignore more, add a `pattern) return 0 ;;` line below.
 is_ignored() {
     case "$1" in
         .local/share/bg) return 0 ;;

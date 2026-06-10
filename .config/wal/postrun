@@ -1,21 +1,30 @@
 #!/bin/bash
 
+# Runs after every `wal` invocation (passed via `wal -o`). Propagates the
+# freshly generated palette to everything that doesn't read ~/.cache/wal
+# on its own. Idempotent: safe to run on every theme change.
+
 dunstconf="${XDG_CONFIG_HOME:-$HOME/.config}/dunst/dunstrc"
 zathuraconf="${XDG_CONFIG_HOME:-$HOME/.config}/zathura/zathurarc"
+btoptheme="${XDG_CONFIG_HOME:-$HOME/.config}/btop/themes/wal.theme"
 
-source "${XDG_CACHE_HOME:-$HOME/.cache}/wal/colors.sh"
-
-mkdir -p "${dunstconf%/*}" "${zathuraconf%/*}"
-
-mv -n "$dunstconf" "$dunstconf.bak"
-mv -n "$zathuraconf" "$zathuraconf.bak"
+mkdir -p "${dunstconf%/*}" "${zathuraconf%/*}" "${btoptheme%/*}"
 
 ln -sf "${XDG_CACHE_HOME:-$HOME/.cache}/wal/dunstrc" "$dunstconf"
 ln -sf "${XDG_CACHE_HOME:-$HOME/.cache}/wal/zathurarc" "$zathuraconf"
+ln -sf "${XDG_CACHE_HOME:-$HOME/.cache}/wal/btopwal.theme" "$btoptheme"
 
 # Replay wal's color sequences to every open terminal.
 for term in /dev/pts/*; do
 	[ -w "$term" ] && cat "${XDG_CACHE_HOME:-$HOME/.cache}/wal/sequences" >"$term" 2>/dev/null
 done
 
+# dunst only reads its config at startup.
 pkill dunst; setsid -f dunst
+
+# If running, dwm hit the key to re-read xresources colors.
+pidof dwm >/dev/null && xdotool key super+F5
+
+# qutebrowser's config.py themes itself from xrdb (wal merges colors into
+# xrdb on every run); tell a running instance to re-source it.
+pidof qutebrowser >/dev/null && qutebrowser ':config-source' >/dev/null 2>&1
