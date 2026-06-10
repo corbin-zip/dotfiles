@@ -101,16 +101,18 @@ videoselected()
 	slop -f "%x %y %w %h" > /tmp/slop
 	read -r X Y W H < /tmp/slop
 	rm /tmp/slop
-
-	ffmpeg \
+	ffmpeg -y \
 	-f x11grab \
 	-framerate 30 \
 	-video_size "$W"x"$H" \
 	-i :0.0+"$X,$Y" \
+	-f alsa -thread_queue_size 1024 -i default \
 	-c:v libx264 -qp 0 -r 30 \
+	-c:a aac \
+	-use_wallclock_as_timestamps 1 \
 	"$HOME/box-$(date '+%y%m%d-%H%M-%S').mkv" &
 	echo $! > /tmp/recordingpid
-	updateicon "⏺️"
+	updateicon "⏺️🎙️"
 }
 
 case "$1" in
