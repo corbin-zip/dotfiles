@@ -1,0 +1,146 @@
+#!/bin/sh
+
+# One-way sync of Todoist into calcurse, written to run from crontab.
+# Downloads the Todoist iCal export and rebuilds calcurse's data from it:
+#   - anything dated before today is overdue (the export only contains
+#     uncompleted items) and lands in the todo window as "name MM/DD xN":
+#     one entry per task with the oldest miss date, the xN count standing
+#     in for a line per missed recurrence, ordered oldest-first. calcurse
+#     always displays a todo's priority digit and sorts by it, so the
+#     entries are numbered sequentially through the priority (1, 2, ...).
+#     Priorities stop at 9; items past the ninth all show 9 and keep
+#     their date order via invisible zero-width-space prefixes, since
+#     calcurse byte-sorts same-priority todos by description. Non-TASK
+#     overdue events also stay on the calendar at their original date.
+#   - events whose summary starts with "TASK: " and are due today (or
+#     undated) become plain "[0]" todos and are kept off the calendar.
+#   - everything else is imported as appointments.
+# Local calcurse data is replaced wholesale on every sync —
+# Todoist is the source of truth, so don't create items in calcurse.
+# The replacement only happens after a verified download and parse; any
+# failure leaves the current calcurse data untouched. If the export hasn't
+# changed since the last successful sync, the run is a no-op.
+#
+# The export URL contains an auth token, so it lives in
+# ~/.config/shell/secretsrc:
+#   export TODOIST_ICAL_URL="https://ext.todoist.com/export/ical/todoist?user_id=...&ical_token=...&r_factor=1260"
+# (Settings -> Calendars -> "Export to another calendar app" in Todoist.)
+
+. "${XDG_CONFIG_HOME:-$HOME/.config}/shell/secretsrc"
+
+[ -n "${TODOIST_ICAL_URL:-}" ] || {
+	echo "todoist-calcurse-sync: TODOIST_ICAL_URL not set in secretsrc" >&2
+	exit 1
+}
+
+datadir="${XDG_DATA_HOME:-$HOME/.local/share}/calcurse"
+statedir="${XDG_STATE_HOME:-$HOME/.local/state}/todoist-calcurse-sync"
+mkdir -p "$statedir"
+
+# calcurse rewrites its data files on quit, which would clobber (or be
+# clobbered by) this sync. Skip the run; the next hourly one will catch up.
+pgrep -x calcurse >/dev/null && exit 0
+
+tmp=$(mktemp) || exit 1
+trap 'rm -f "$tmp"' HUP INT QUIT TERM EXIT
+
+curl -fsSL "$TODOIST_ICAL_URL" -o "$tmp" || {
+	echo "todoist-calcurse-sync: download failed" >&2
+	exit 1
+}
+grep -q "^BEGIN:VCALENDAR" "$tmp" || {
+	echo "todoist-calcurse-sync: download is not an iCalendar file" >&2
+	exit 1
+}
+
+# Unchanged since the last successful sync: nothing to do.
+cmp -s "$tmp" "$statedir/todoist.ical" && exit 0
+
+rm -f "$statedir/todo"
+awk -v today="$(date +%Y%m%d)" -v todofile="$statedir/todo" \
+	-v zwsp="$(printf '\342\200\213')" '
+	/^BEGIN:VEVENT/ { inevent = 1; buf = ""; summary = ""; date = "" }
+	inevent {
+		line = $0
+		if (line ~ /^SUMMARY:/) {
+			summary = line
+			# Todoist does not RFC-escape commas/semicolons in TEXT
+			# values, and strict calcurse rejects such summaries as
+			# malformed. Escape them in the ical copy only; the todo
+			# file wants plain text.
+			gsub(/,/, "\\,", line)
+			gsub(/;/, "\\;", line)
+		} else if (line ~ /^DTSTART/)
+			date = substr(line, index(line, ":") + 1)
+		buf = buf line "\n"
+		if (line ~ /^END:VEVENT/) {
+			inevent = 0
+			istask = (summary ~ /^SUMMARY:TASK: /)
+			# "SUMMARY:" is 8 chars, "SUMMARY:TASK: " is 14.
+			name = istask ? substr(summary, 15) : substr(summary, 9)
+			d = (date == "") ? today : substr(date, 1, 8)
+			if (summary == "")
+				printf "%s", buf
+			else if (d < today) {
+				# Overdue. Track oldest miss + count per task; the
+				# todo entries are written in the END block.
+				if (!(name in firstdue) || d < firstdue[name])
+					firstdue[name] = d
+				misses[name]++
+				if (!istask)
+					printf "%s", buf
+			} else if (istask && d == today)
+				duetoday[name] = 1
+			else
+				printf "%s", buf
+		}
+		next
+	}
+	{ print }
+	END {
+		# Overdue first, oldest first ([1] = top priority in calcurse).
+		n = 0
+		for (name in firstdue)
+			keys[n++] = firstdue[name] SUBSEP name
+		for (i = 1; i < n; i++) {
+			k = keys[i]
+			for (j = i - 1; j >= 0 && keys[j] > k; j--)
+				keys[j + 1] = keys[j]
+			keys[j + 1] = k
+		}
+		for (i = 0; i < n; i++) {
+			s = index(keys[i], SUBSEP)
+			d = substr(keys[i], 1, s - 1)
+			name = substr(keys[i], s + 1)
+			seq = i + 1
+			pri = (seq > 9) ? 9 : seq
+			prefix = ""
+			for (k = 9; k < seq; k++)
+				prefix = prefix zwsp
+			mmdd = substr(d, 5, 2) "/" substr(d, 7, 2)
+			cnt = (misses[name] > 1) ? " x" misses[name] : ""
+			printf "[%d] %s%s %s%s\n", pri, prefix, name, mmdd, cnt >> todofile
+		}
+		for (name in duetoday)
+			if (!(name in firstdue))
+				printf "[0] %s\n", name >> todofile
+	}
+' "$tmp" >"$statedir/processed.ical"
+
+# Good download + parse: now (and only now) replace the calcurse data.
+rm -f "$datadir/apts" "$datadir/todo"
+# calcurse exits nonzero on a partial import (it points at a log in /tmp
+# for the skipped items); the imported items are already written by then,
+# so warn and carry on rather than abort.
+calcurse -i "$statedir/processed.ical" --quiet ||
+	echo "todoist-calcurse-sync: some items were not imported" >&2
+[ -s "$datadir/apts" ] || {
+	echo "todoist-calcurse-sync: import produced no appointments" >&2
+	exit 1
+}
+[ -f "$statedir/todo" ] && cp "$statedir/todo" "$datadir/todo"
+[ -f "$datadir/todo" ] || : >"$datadir/todo"
+
+# Remember this export so identical future downloads short-circuit.
+mv "$tmp" "$statedir/todoist.ical"
+trap - HUP INT QUIT TERM EXIT
