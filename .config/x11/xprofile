@@ -3,7 +3,7 @@
 # This file runs when a DM logs you into a graphical session.
 # If you use startx/xinit, this file will also be sourced.
 
-DEVICE="default"
+DEVICE=$(uname -n)
 USE_XRDB=true
 
 if [ "$USE_XRDB" = true ]; then
@@ -11,21 +11,21 @@ if [ "$USE_XRDB" = true ]; then
 fi
 
 case "$DEVICE" in
-    "cz desktop")
+    "spike")
         xrandr --dpi 180 &
         sh ./.screenlayout/currentbutslower.sh &
         autostart="picom dunst unclutter remaps settokyo protonmail-bridge synology-drive"
         redshift -P -O 3300 &
         rivalcfg -s 1100 -S 1300 &
-        xwallpaper --zoom "/home/carbon/.local/share/bg" &
+        xwallpaper --zoom "${XDG_DATA_HOME:-$HOME/.local/share}/bg" &
         ;;
-    "cz t480")
+    "gaia")
         settokyo &
-        autostart="picom dunst unclutter remapd settokyo synology-drive"
+        autostart="picom dunst unclutter remapd synology-drive"
         redshift -P -O 3300 &
-        xwallpaper --zoom "/home/carbon/.local/share/bg" &
+        xwallpaper --zoom "${XDG_DATA_HOME:-$HOME/.local/share}/bg" &
         ;;
-    "cz x220")
+    "ganymede")
         xrandr --dpi 100 &
         setbg ~/sdrive/pictures/wallpapers/x220/0.png &
         autostart="mpd picom dunst unclutter remaps settokyo synology-drive"
@@ -36,7 +36,7 @@ case "$DEVICE" in
         [ -n "$tp_id" ] && xinput --set-prop "$tp_id" "libinput Accel Speed" -0.5 &
         [ -n "$tpad_id" ] && xinput --set-prop "$tpad_id" "libinput Natural Scrolling Enabled" 1 &
         ;;
-    "default" | *)
+    *)
         # Set DPI. User may want to use a larger number for larger screens.
         xrandr --dpi 96
         setbg &
@@ -45,7 +45,7 @@ case "$DEVICE" in
 esac
 
 for program in $autostart; do
-	pidof -s "$program" || "$program" &
+	pidof -sx "$program" || "$program" &
 done >/dev/null 2>&1
 
 if command -v ya > /dev/null
