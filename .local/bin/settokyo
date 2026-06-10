@@ -1,3 +1,5 @@
+#!/bin/sh
+
 # Configuration files of applications that have their themes changed by pywal.
 dunstconf="${XDG_CONFIG_HOME:-$HOME/.config}/dunst/dunstrc"
 zathuraconf="${XDG_CONFIG_HOME:-$HOME/.config}/zathura/zathurarc"
