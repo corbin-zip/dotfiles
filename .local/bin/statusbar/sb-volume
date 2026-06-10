@@ -29,6 +29,7 @@ split() {
 
 vol="$(printf "%.0f" "$(split "$vol" ".")")"
 
+# shellcheck disable=SC2194 # arithmetic-case idiom: each pattern evaluates to 0 or 1
 case 1 in
 	$((vol >= 70)) ) icon="🔊" ;;
 	$((vol >= 30)) ) icon="🔉" ;;

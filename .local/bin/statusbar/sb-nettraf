@@ -26,4 +26,5 @@ update() {
 rx=$(update /sys/class/net/[ew]*/statistics/rx_bytes)
 tx=$(update /sys/class/net/[ew]*/statistics/tx_bytes)
 
+# shellcheck disable=SC2046,SC2183,SC2086 # intentional: numfmt supplies two args
 printf "🔻%4sB 🔺%4sB\\n" $(numfmt --to=iec $rx $tx)

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SINKS=($(pactl list short sinks | awk '{print $2}'))
+mapfile -t SINKS < <(pactl list short sinks | awk '{print $2}')
 CURRENT_SINK=$(pactl get-default-sink)
 
 toggle_sinks() {

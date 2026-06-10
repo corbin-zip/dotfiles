@@ -45,12 +45,12 @@ TIMER=$(($(cat $TIMER_FILE) - $(date +%s)))
 
 # If time is up, print the emoji
 if ((TIMER <= 0)); then
-	if [[ $(cat $TIMER_FILE) != "0" ]]; then
+	if [[ $(cat "$TIMER_FILE") != "0" ]]; then
 		mpc toggle
-		echo "0" >$TIMER_FILE
+		echo "0" >"$TIMER_FILE"
 	fi
-	echo "⏲️ $(date -u -d @$(cat $TOTAL_FILE) +'%M:%S')"
+	echo "⏲️ $(date -u -d "@$(cat "$TOTAL_FILE")" +'%M:%S')"
 else
 	# Otherwise, format the remaining time as mm:ss and print it along with the total time
-	echo "$(date -u -d @${TIMER} +'%M:%S')/$(date -u -d @$(cat $TOTAL_FILE) +'%M:%S')"
+	echo "$(date -u -d "@${TIMER}" +'%M:%S')/$(date -u -d "@$(cat "$TOTAL_FILE")" +'%M:%S')"
 fi

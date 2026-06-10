@@ -3,20 +3,20 @@
 # dmenu theming
 lines="-l 20"
 
-selected="$(ps -a -u $USER |
+selected="$(ps -a -u "$USER" |
 	dmenu -i -c \
-		$lines $colors $font |
+		$lines |
 	awk '{print $1" "$4}')"
 
-if [[ ! -z $selected ]]; then
+if [[ -n $selected ]]; then
 
 	answer="$(echo -e "Yes\nNo" |
 		dmenu -i -c -p "$selected will be killed, ok?" \
-			$lines $colors $font)"
+			$lines)"
 
 	if [[ $answer == "Yes" ]]; then
-		selpid="$(awk '{print $1}' <<<$selected)"
-		kill -9 $selpid
+		selpid="$(awk '{print $1}' <<<"$selected")"
+		kill -9 "$selpid"
 	fi
 fi
 

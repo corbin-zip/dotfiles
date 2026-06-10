@@ -9,15 +9,9 @@ moonfile="${XDG_DATA_HOME:-$HOME/.local/share}/moonphase"
 
 icon="$(cat "$moonfile")"
 
+# Bail out if the cached file isn't one of the eight phase emojis.
 case "$icon" in
-	🌑) name="New" ;;
-	🌒) name="Waxing Crescent" ;;
-	🌓) name="First Quarter" ;;
-	🌔) name="Waxing Gibbous" ;;
-	🌕) name="Full" ;;
-	🌖) name="Waning Gibbous" ;;
-	🌗) name="Last Quarter" ;;
-	🌘) name="Waning Crescent" ;;
+	🌑|🌒|🌓|🌔|🌕|🌖|🌗|🌘) ;;
 	*) exit 1 ;;
 esac
 
