@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+# Sync Plex audio playlists down to local mpd .m3u playlists.
+# Pulls every audio playlist from Plex, rewrites track paths from the server
+# library root to the local music dir, and writes one .m3u per playlist into
+# mpd's playlist directory (entries relative to music_directory, so mpd
+# resolves them). Tracks with no local file are skipped and logged to the
+# state dir. Playlists this script wrote on a previous run that no longer
+# exist in Plex are deleted; hand-made local playlists are never touched.
+# Run daily from crontab.
+#
+# Server details live in ~/.config/shell/secretsrc, e.g.:
+#   export PLEX_TOKEN="xxxxxxxxxxxxxxxxxxxx"
+#   export PLEX_URL="https://<plex-host>:32400"
+#   export PLEX_MUSIC_ROOT="/path/to/Music/on/the/server/"
+# Get the token from Plex Web: any track -> Get Info -> View XML, copy the
+# X-Plex-Token= value from the URL. PLEX_MUSIC_ROOT is the library path as
+# the Plex server sees it (check the same XML's <Part file="..."> attribute).
+
+import os
+import re
+import sys
+from pathlib import Path
+
+import requests
+import urllib3
+from plexapi.server import PlexServer
+
+LOCAL_MUSIC_ROOT = Path.home() / "Music"  # mpd's music_directory
+PLAYLIST_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "mpd/playlists"
+STATE_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "plex-mpd-sync"
+SECRETSRC = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "shell/secretsrc"
+
+# Plex playlists to skip. "All Music" is the built-in whole-library smart
+# playlist (100k+ tracks) — pointless as an m3u.
+EXCLUDE = {"All Music"}
+
+
+def get_secret(name):
+    if value := os.environ.get(name):
+        return value
+    if SECRETSRC.is_file():
+        if m := re.search(rf'^export {name}="([^"]+)"', SECRETSRC.read_text(), re.M):
+            return m.group(1)
+    sys.exit(f"plex-mpd-sync: {name} not set in environment or {SECRETSRC}"
+             " (see the comment at the top of this script)")
+
+
+def safe_filename(title):
+    return re.sub(r"[/\0]", "-", title).strip(". ") or "untitled"
+
+
+def main():
+    plex_url = get_secret("PLEX_URL")
+    plex_music_root = get_secret("PLEX_MUSIC_ROOT").rstrip("/") + "/"
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)  # self-signed cert
+    session = requests.Session()
+    session.verify = False
+    plex = PlexServer(plex_url, get_secret("PLEX_TOKEN"), session=session, timeout=30)
+
+    PLAYLIST_DIR.mkdir(parents=True, exist_ok=True)
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    managed_file = STATE_DIR / "managed.txt"
+    previously_managed = set(managed_file.read_text().splitlines()) if managed_file.is_file() else set()
+
+    written = []
+    misses = []
+    for playlist in plex.playlists(playlistType="audio"):
+        if playlist.title in EXCLUDE:
+            continue
+        entries = []
+        fetched = 0
+        # paginate: items() pulls everything in one request, too big for huge lists
+        # (plexapi strips "/items" off playlist.key, so add it back)
+        for track in playlist.fetchItems(playlist.key + "/items", container_size=2000):
+            fetched += 1
+            try:
+                plexpath = track.media[0].parts[0].file
+            except (IndexError, AttributeError):
+                misses.append(f"{playlist.title}\t{track.title}\t<no file in plex>")
+                continue
+            if not plexpath.startswith(plex_music_root):
+                misses.append(f"{playlist.title}\t{track.title}\t{plexpath}")
+                continue
+            relpath = plexpath[len(plex_music_root):]
+            if (LOCAL_MUSIC_ROOT / relpath).is_file():
+                entries.append(relpath)
+            else:
+                misses.append(f"{playlist.title}\t{track.title}\t{plexpath}")
+        name = safe_filename(playlist.title) + ".m3u"
+        tmp = PLAYLIST_DIR / (name + ".tmp")
+        tmp.write_text("".join(e + "\n" for e in entries))
+        tmp.replace(PLAYLIST_DIR / name)
+        written.append(name)
+        print(f"{name}: {len(entries)}/{fetched} tracks")
+
+    for stale in previously_managed - set(written):
+        (PLAYLIST_DIR / stale).unlink(missing_ok=True)
+        print(f"removed stale playlist {stale}")
+    managed_file.write_text("".join(n + "\n" for n in written))
+
+    (STATE_DIR / "missing.log").write_text("".join(m + "\n" for m in misses))
+    print(f"synced {len(written)} playlists, {len(misses)} tracks missing locally"
+          + (f" (see {STATE_DIR}/missing.log)" if misses else ""))
+
+
+if __name__ == "__main__":
+    main()
