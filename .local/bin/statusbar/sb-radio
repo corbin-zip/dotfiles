@@ -1,0 +1,49 @@
+#!/bin/sh
+
+# 📻 Radio: shows the playing station, or how many stations are
+# live when idle. Playback lives in a detached mpv that radio(1) drives
+# over an IPC socket, so this module only renders state and forwards
+# clicks. Live-station discovery is cached and refreshed in the
+# background at most every $maxage seconds.
+# - Left click picks a live station (dmenu).
+# - Middle click pauses/resumes.
+# - Right click shows the live list and help.
+# - Scroll steps through the live stations.
+
+live="${XDG_CACHE_HOME:-$HOME/.cache}/radio/live.tsv"
+maxage=600
+
+case $BLOCK_BUTTON in
+	1) setsid -f radio pick >/dev/null 2>&1 ;;
+	2) radio toggle ;;
+	3) notify-send "📻 Radio module" "$([ -s "$live" ] &&
+		awk -F'\t' '{printf "• %s — %s\n", $3, $2}' "$live" ||
+		echo "Nobody is live.")
+Live list updated $(date -d "@$(stat -c %Y "$live" 2>/dev/null || echo 0)" +'%-I:%M%P')
+- Left click: pick a station
+- Middle click: pause/resume
+- Scroll: previous/next station
+- \`radio video\`: show video (starts hidden; 'v' in mpv re-hides)" ;;
+	4) radio prev ;;
+	5) radio next ;;
+	6) setsid -f "$TERMINAL" -e "$EDITOR" "$0" ;;
+esac
+
+# Kick off a background discovery refresh when the cache goes stale;
+# refresh signals the bar itself when it lands.
+age=$(( $(date +%s) - $(stat -c %Y "$live" 2>/dev/null || echo 0) ))
+if [ "$age" -ge "$maxage" ] && ! pgrep -f "radio refresh" >/dev/null; then
+	setsid -f radio refresh >/dev/null 2>&1
+fi
+
+state="$(radio status)"
+if [ -n "$state" ]; then
+	station="${state#*	}"
+	case "$state" in
+		paused*) printf '📻⏸%.20s\n' "$station" ;;
+		*) printf '📻%.20s\n' "$station" ;;
+	esac
+else
+	n="$(grep -c . "$live" 2>/dev/null)"	# 0 on empty cache, "" if none yet
+	printf '📻%s\n' "${n:-?}"
+fi

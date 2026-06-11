@@ -1,0 +1,142 @@
+#!/bin/sh
+
+# radio - play live YouTube "stations" in a long-lived mpv.
+#
+# Stations are YouTube channel /streams URLs, one per line, in
+# ~/.config/radio/stations.csv (blank lines and #comments ok). Live
+# streams are discovered with yt-dlp and cached as a TSV so sb-radio
+# can render instantly. mpv runs detached with an IPC socket; every
+# action here is a socat one-liner against it. Playback starts audio-
+# only; `radio video` shows the video (and 'v' inside mpv hides it
+# again) without touching audio.
+#
+# usage: radio pick|play [N]|pause|toggle|video|stop|next|prev|status|refresh
+#        play N plays station N from the live cache; bare play resumes
+#        a paused player (the idempotent opposite of pause)
+
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/radio"
+stations="$conf/stations.csv"
+inputconf="$conf/input.conf"
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/radio"
+live="$cache/live.tsv"
+sock="${XDG_RUNTIME_DIR:-/tmp}/radio-mpv.sock"
+sbsignal=22	# sb-radio's RTMIN+ signal in dwmblocks config.h
+
+ipc() { printf '%s\n' "$1" | socat - "$sock" 2>/dev/null ;}
+getprop() { ipc "{\"command\":[\"get_property\",\"$1\"]}" |
+	jq -r 'select(.error == "success") | .data' 2>/dev/null ;}
+setprop() { ipc "{\"command\":[\"set_property\",\"$1\",$2]}" >/dev/null ;}
+alive() { [ -S "$sock" ] && [ -n "$(getprop pid)" ] ;}
+bar() { pkill -RTMIN+$sbsignal "${STATUSBAR:-dwmblocks}" 2>/dev/null ;}
+
+# Ask yt-dlp which streams are live, all channels in parallel, and
+# atomically replace the cache. Flat-playlist entries no longer carry
+# is_live, but only live/scheduled streams have a null duration — so
+# those few candidates get a full probe to weed out scheduled ones.
+# Slow (network); callers background it.
+checkchannel() {
+	yt-dlp -j --flat-playlist "$1" 2>/dev/null |
+		jq -r 'select(.duration == null) | .url' | head -n 5 |
+		xargs -r yt-dlp -j 2>/dev/null |
+		jq -r 'select(.is_live == true) |
+			[.webpage_url, .fulltitle // .title, .channel // .uploader // "?"] | @tsv'
+}
+
+refresh() {
+	mkdir -p "$cache"
+	i=0
+	while read -r channel; do
+		case "$channel" in '' | '#'*) continue ;; esac
+		checkchannel "$channel" > "$cache/chan.$i.tmp" &
+		i=$((i + 1))
+	done < "$stations"
+	wait
+	cat "$cache"/chan.*.tmp > "$live.tmp" 2>/dev/null
+	rm -f "$cache"/chan.*.tmp
+	mv "$live.tmp" "$live"
+	bar
+}
+
+# Play line $1 of the cache. Reuses the running mpv when there is one;
+# otherwise starts a fresh detached player. --input-conf supplants
+# ~/.config/mpv/input.conf for this player only ('v' = hide/show video);
+# mpv's builtin bindings still apply. RADIO_MPV_FLAGS for extras.
+play() {
+	url="$(awk -F'\t' -v n="$1" 'NR == n {print $1}' "$live")"
+	[ -z "$url" ] && return 1
+	if alive; then
+		ipc "{\"command\":[\"loadfile\",\"$url\",\"replace\"]}" >/dev/null
+	else
+		rm -f "$sock"	# stale socket file keeps mpv from binding IPC
+		[ -f "$inputconf" ] ||
+			printf 'v cycle-values vid no auto\n' > "$inputconf"
+		# shellcheck disable=SC2086 # RADIO_MPV_FLAGS is word-split on purpose
+		# --load-scripts=no: the mpvSockets user script would re-point
+		# --input-ipc-server to its own per-pid socket and orphan ours
+		setsid -f mpv --input-ipc-server="$sock" --force-window=no \
+			--no-terminal --load-scripts=no --input-conf="$inputconf" \
+			--vid=no $RADIO_MPV_FLAGS "$url" >/dev/null 2>&1
+		notify-send "📻 Radio" \
+			"Playing audio only. Run \`radio video\` to show the video ('v' in the player hides it again)."
+	fi
+	bar
+}
+
+pick() {
+	[ -s "$live" ] || refresh
+	[ -s "$live" ] || {
+		notify-send "📻 Radio" "No stations are live right now."
+		return 0 ;}
+	choice="$(awk -F'\t' '{printf "%d %s — %s\n", NR, $3, $2}' "$live" |
+		dmenu -i -l 15 -p '📻')" || return 0
+	play "${choice%% *}"
+}
+
+# Step $1 (+1/-1) through the cached live list from the current stream.
+hop() {
+	alive || return 0
+	n="$(wc -l < "$live" 2>/dev/null)" || return 0
+	[ "$n" -gt 0 ] || return 0
+	now="$(awk -F'\t' -v u="$(getprop path)" '$1 == u {print NR; exit}' "$live")"
+	if [ -z "$now" ]; then
+		play 1
+	else
+		play $(( (now - 1 + $1 + n) % n + 1 ))
+	fi
+}
+
+video() {
+	case "$(getprop vid)" in
+		'') ;; # no player running
+		no | false)
+			setprop vid '"auto"'
+			ipc '{"command":["show-text","Video On"]}' >/dev/null ;;
+		*)	setprop vid '"no"' ;;
+	esac
+}
+
+# One line for sb-radio: "playing<TAB>station" / "paused<TAB>station",
+# nothing when no player is up. Station name comes from the cache (the
+# channel uploader); falls back to mpv's media-title.
+status() {
+	alive || return 0
+	station="$(awk -F'\t' -v u="$(getprop path)" \
+		'$1 == u {print $3; exit}' "$live" 2>/dev/null)"
+	[ -z "$station" ] && station="$(getprop media-title)"
+	[ "$(getprop pause)" = "true" ] && state=paused || state=playing
+	printf '%s\t%s\n' "$state" "$station"
+}
+
+case "$1" in
+	refresh) refresh ;;
+	pick) pick ;;
+	play) if [ -n "$2" ]; then play "$2"; else setprop pause false; bar; fi ;;
+	pause) setprop pause true; bar ;;
+	toggle) ipc '{"command":["cycle","pause"]}' >/dev/null; bar ;;
+	video) video ;;
+	next) hop +1 ;;
+	prev) hop -1 ;;
+	stop) ipc '{"command":["quit"]}' >/dev/null; bar ;;
+	status) status ;;
+	*) sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 1 ;;
+esac

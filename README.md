@@ -62,11 +62,22 @@ General-purpose scripts are in `.local/bin/`. Notable ones:
 Statusbar modules for dwmblocks are in `.local/bin/statusbar/`. They're click-aware via dwm's statuscmd patch. A few of the less ordinary ones:
 
 - `sb-claude` - shows remaining Claude Code usage (the rolling 5-hour and weekly windows) by querying the OAuth usage endpoint with the token Claude Code already stores locally; cached so the endpoint isn't hammered, clickable for details or a forced refresh
+- `sb-radio` - internet radio in the bar (detailed below)
 - `sb-forecast` / `sb-doppler` - weather forecast and radar
 - `sb-caffeine` - toggle screen blanking from the bar
 - `sb-firmware` / `sb-popfwupd` - pending firmware updates via fwupd
 
 Cron jobs live in `.local/bin/cron/`, including `todoist-calcurse-sync` (syncs Todoist tasks into calcurse) and `plex-mpd-sync` (mirrors Plex playlists into mpd).
+
+### Radio
+
+`radio` plays live YouTube streams ("stations") in a single long-lived mpv, driven from the status bar by `sb-radio`. Playback starts audio-only with no window; `radio video` brings the video up and `v` inside the player hides it again, audio (mostly) uninterrupted. The bar shows the playing station, or how many stations are live when idle, and is click-driven: left click picks a live station; middle click pauses/resumes; scroll hops between stations; right click shows the live list and help. Run `radio` bare for the full subcommand list.
+
+- **Stations** live in `.config/radio/stations.csv` - one YouTube channel `/streams` URL per line, blank lines and `#` comments allowed. A starter list ships with the repo, so just edit it to taste; the next refresh picks up changes. Liveness is checked per channel with yt-dlp in parallel, cached, and refreshed in the background at most every 10 minutes.
+- **Cookies**: YouTube refuses anonymous yt-dlp from many IPs, breaking both discovery and playback. Browser cookies get past this. Add `--cookies-from-browser chromium+gnomekeyring` to `~/.config/yt-dlp/config` and visit YouTube in chromium once - no sign-in needed (usually), and no cookie file is ever written to disk; yt-dlp reads them straight out of the browser at runtime. The explicit `+gnomekeyring` is load-bearing on dwm: yt-dlp guesses the keyring backend from `XDG_CURRENT_DESKTOP`, and on desktops it doesn't recognize it silently falls back to one that decrypts zero chromium cookies ("cannot decrypt v11 cookies"). Requires `python-secretstorage` and a running, unlocked gnome-keyring (part of a normal login here).
+- **Dependencies**: `mpv`, `yt-dlp`, `jq`, `socat`, plus dmenu and libnotify from the paired programs above.
+
+The dwmblocks block is `{"", "sb-radio", 60, 22}`, already present in my dwmblocks build.
 
 ## Bookmark system
 
