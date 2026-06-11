@@ -66,6 +66,7 @@ play() {
 	[ -z "$url" ] && return 1
 	if alive; then
 		ipc "{\"command\":[\"loadfile\",\"$url\",\"replace\"]}" >/dev/null
+		setprop pause false	# pause persists across loadfile; switching means play
 	else
 		rm -f "$sock"	# stale socket file keeps mpv from binding IPC
 		[ -f "$inputconf" ] ||
