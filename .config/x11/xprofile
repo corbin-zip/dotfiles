@@ -51,12 +51,14 @@ for program in $autostart; do
 	pidof -sx "$program" || "$program" &
 done >/dev/null 2>&1
 
+# Install yazi packages only if missing, so login doesn't hit the network.
 if command -v ya > /dev/null
 then
-    ya pkg add BennyOe/tokyo-night
-    ya pkg add yazi-rs/plugins:git
-    ya pkg add yazi-rs/plugins:smart-enter
-    ya pkg add yazi-rs/plugins:mime-ext
+    yazidir=${XDG_CONFIG_HOME:-$HOME/.config}/yazi
+    [ -d "$yazidir/flavors/tokyo-night.yazi" ] || ya pkg add BennyOe/tokyo-night
+    [ -d "$yazidir/plugins/git.yazi" ] || ya pkg add yazi-rs/plugins:git
+    [ -d "$yazidir/plugins/smart-enter.yazi" ] || ya pkg add yazi-rs/plugins:smart-enter
+    [ -d "$yazidir/plugins/mime-ext.yazi" ] || ya pkg add yazi-rs/plugins:mime-ext
 fi
 
 # Ensure that xrdb has finished running before moving on to start the WM/DE.
