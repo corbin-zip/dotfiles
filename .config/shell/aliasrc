@@ -65,4 +65,5 @@ alias \
     tree="lsd --tree" \
     neofetch="fastfetch" \
     lg="lazygit" \
-    cat="bat"
+    cat="bat" \
+    claude="systemd-run --user --scope --quiet claude" # helps the oom killer
