@@ -1,0 +1,129 @@
+#!/bin/sh
+
+# td - thin wrapper around the Todoist unified v1 API
+# <https://developer.todoist.com/api/v1>. The single place anything on
+# this machine talks to Todoist read/write: the statusbar module
+# (sb-todoist) and Claude both call this instead of curl-ing the API
+# themselves. Read-only calendar display stays with the iCal feed via
+# cron/todoist-calcurse-sync.
+#
+# Needs TODOIST_API_TOKEN in ~/.config/shell/secretsrc
+# (Todoist -> Settings -> Integrations -> Developer).
+#
+# Usage:
+#   td add <text...>        natural language: "dentist next monday 2pm p2"
+#   td list [query]         filter query, default: overdue | today
+#   td get <id>             one task by id, even if completed
+#   td done <id>            complete a task
+#   td postpone <id> <when> reschedule: "tomorrow", "next sat", ...
+#   td sync                 refresh calcurse from Todoist now
+#
+# `list` prints one task per line, tab-separated:
+#   id <TAB> due-date <TAB> priority <TAB> content
+# due-date is YYYY-MM-DD or "-" (undated); priority is p1..p3 or "-"
+# (Todoist's API counts backwards: API 4 = UI p1 = most urgent).
+
+api="https://api.todoist.com/api/v1"
+
+. "${XDG_CONFIG_HOME:-$HOME/.config}/shell/secretsrc"
+
+[ -n "${TODOIST_API_TOKEN:-}" ] || {
+	echo "td: TODOIST_API_TOKEN not set in secretsrc" >&2
+	exit 1
+}
+
+usage() {
+	sed -n 's/^#   td/  td/p' "$0" >&2
+	exit 64
+}
+
+req() { # req METHOD PATH [curl args...] -> body, fails on HTTP error
+	method="$1" path="$2"
+	shift 2
+	curl -sSm 20 --fail-with-body -X "$method" \
+		-H "Authorization: Bearer $TODOIST_API_TOKEN" \
+		"$api$path" "$@"
+}
+
+# Kick the calcurse sync in the background after anything that changes
+# Todoist, so the calendar/todo window catches up without waiting for cron.
+syncsoon() { setsid -f "${0%/*}/cron/todoist-calcurse-sync" >/dev/null 2>&1; }
+
+cmd="${1:-}"
+[ $# -gt 0 ] && shift
+
+case "$cmd" in
+add)
+	[ $# -gt 0 ] || usage
+	body=$(jq -n --arg text "$*" '{text: $text}') || exit 1
+	resp=$(req POST /tasks/quick -H "Content-Type: application/json" -d "$body") || {
+		echo "td: add failed: $resp" >&2
+		exit 1
+	}
+	echo "$resp" | jq -r '"added: \(.content)\(.due.date // "" | if . == "" then "" else "  (\(.))" end)"'
+	syncsoon
+	;;
+list)
+	query="${*:-overdue | today}"
+	cursor="" tasks=""
+	while :; do
+		page=$(req GET "/tasks/filter" -G \
+			--data-urlencode "query=$query" \
+			--data-urlencode "limit=200" \
+			${cursor:+--data-urlencode "cursor=$cursor"}) || {
+			echo "td: list failed: $page" >&2
+			exit 1
+		}
+		tasks="$tasks$(echo "$page" | jq '.results[]')"
+		cursor=$(echo "$page" | jq -r '.next_cursor // empty')
+		[ -n "$cursor" ] || break
+	done
+	echo "$tasks" | jq -rs 'sort_by(.due.date // "9999-99-99")[] |
+		[.id,
+		 (.due.date // "-"),
+		 (if .priority > 1 then "p\(5 - .priority)" else "-" end),
+		 .content] | @tsv'
+	;;
+get)
+	# Same TSV as list, but priority column shows "done <date>" once the
+	# task is completed. Used by the vault mirror check (notes annotate
+	# migrated items with "(todoist:ID)"; see the task-assistant skill).
+	[ $# -eq 1 ] || usage
+	resp=$(req GET "/tasks/$1") || {
+		echo "td: get failed: $resp" >&2
+		exit 1
+	}
+	echo "$resp" | jq -r '[.id,
+		 (.due.date // "-"),
+		 (if .checked then "done \(.completed_at[:10] // "?")"
+		  elif .priority > 1 then "p\(5 - .priority)" else "-" end),
+		 .content] | @tsv'
+	;;
+done)
+	[ $# -eq 1 ] || usage
+	resp=$(req POST "/tasks/$1/close") || {
+		echo "td: done failed: $resp" >&2
+		exit 1
+	}
+	echo "completed: $1"
+	syncsoon
+	;;
+postpone)
+	[ $# -ge 2 ] || usage
+	id="$1"
+	shift
+	body=$(jq -n --arg due "$*" '{due_string: $due}') || exit 1
+	resp=$(req POST "/tasks/$id" -H "Content-Type: application/json" -d "$body") || {
+		echo "td: postpone failed: $resp" >&2
+		exit 1
+	}
+	echo "$resp" | jq -r '"postponed: \(.content)  (\(.due.date // .due.string))"'
+	syncsoon
+	;;
+sync)
+	"${0%/*}/cron/todoist-calcurse-sync"
+	;;
+*)
+	usage
+	;;
+esac
