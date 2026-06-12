@@ -17,7 +17,7 @@ case $BLOCK_BUTTON in
 	1) setsid -f radio pick >/dev/null 2>&1 ;;
 	2) radio toggle ;;
 	3) notify-send "📻 Radio module" "$([ -s "$live" ] &&
-		awk -F'\t' '{printf "• %s — %s\n", $3, $2}' "$live" ||
+		awk -F'\t' '{printf "• %s\n", ($2 == $3) ? $3 : $3 " — " $2}' "$live" ||
 		echo "Nobody is live.")
 Live list updated $(date -d "@$(stat -c %Y "$live" 2>/dev/null || echo 0)" +'%-I:%M%P')
 - Left click: pick a station

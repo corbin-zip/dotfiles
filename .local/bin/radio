@@ -2,10 +2,12 @@
 
 # radio - play live YouTube "stations" in a long-lived mpv.
 #
-# Stations are YouTube channel /streams URLs, one per line, in
-# ~/.config/radio/stations.csv (blank lines and #comments ok). Live
-# streams are discovered with yt-dlp and cached as a TSV so sb-radio
-# can render instantly. mpv runs detached with an IPC socket; every
+# Stations live in ~/.config/radio/stations.csv, one per line (blank
+# lines and #comments ok): a bare YouTube channel /streams URL is
+# probed for live streams with yt-dlp; "URL Name" is a direct stream
+# URL (Icecast/HLS/anything mpv plays) that's always considered live.
+# Results are cached as a TSV so sb-radio can render instantly.
+# mpv runs detached with an IPC socket; every
 # action here is a socat one-liner against it. Playback starts audio-
 # only; `radio video` shows the video (and 'v' inside mpv hides it
 # again) without touching audio.
@@ -34,20 +36,36 @@ bar() { pkill -RTMIN+$sbsignal "${STATUSBAR:-dwmblocks}" 2>/dev/null ;}
 # is_live, but only live/scheduled streams have a null duration — so
 # those few candidates get a full probe to weed out scheduled ones.
 # Slow (network); callers background it.
+# --ignore-config: the user-level yt-dlp config breaks probes (its
+# --download-archive would skip already-downloaded streams).
+# The full probe needs browser cookies — YouTube bot-checks anonymous
+# player requests ("Sign in to confirm you're not a bot"); the flat
+# playlist fetch doesn't, so it stays cookie-free (it runs once per
+# channel in parallel and cookie extraction isn't free).
 checkchannel() {
-	yt-dlp -j --flat-playlist "$1" 2>/dev/null |
+	yt-dlp --ignore-config -j --flat-playlist "$1" 2>/dev/null |
 		jq -r 'select(.duration == null) | .url' | head -n 5 |
-		xargs -r yt-dlp -j 2>/dev/null |
+		xargs -r yt-dlp --ignore-config \
+			--cookies-from-browser chromium+gnomekeyring -j 2>/dev/null |
 		jq -r 'select(.is_live == true) |
 			[.webpage_url, .fulltitle // .title, .channel // .uploader // "?"] | @tsv'
 }
 
 refresh() {
 	mkdir -p "$cache"
+	# cookie decryption needs the gnome keyring; a blank-password keyring
+	# unlocks silently here, otherwise warn and probe anyway (direct
+	# streams still work, YouTube probes will come up empty)
+	unlock-keyring -q || notify-send "📻 Radio" \
+		"Keyring locked — YouTube stations can't be probed. Run \`unlock-keyring\` and refresh again."
 	i=0
-	while read -r channel; do
-		case "$channel" in '' | '#'*) continue ;; esac
-		checkchannel "$channel" > "$cache/chan.$i.tmp" &
+	while read -r url name; do
+		case "$url" in '' | '#'*) continue ;; esac
+		if [ -n "$name" ]; then	# direct stream: always live, no probe
+			printf '%s\t%s\t%s\n' "$url" "$name" "$name" > "$cache/chan.$i.tmp"
+		else
+			checkchannel "$url" > "$cache/chan.$i.tmp" &
+		fi
 		i=$((i + 1))
 	done < "$stations"
 	wait
@@ -88,7 +106,8 @@ pick() {
 	[ -s "$live" ] || {
 		notify-send "📻 Radio" "No stations are live right now."
 		return 0 ;}
-	choice="$(awk -F'\t' '{printf "%d %s — %s\n", NR, $3, $2}' "$live" |
+	choice="$(awk -F'\t' \
+		'{printf "%d %s\n", NR, ($2 == $3) ? $3 : $3 " — " $2}' "$live" |
 		dmenu -i -l 15 -p '📻')" || return 0
 	play "${choice%% *}"
 }

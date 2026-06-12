@@ -1,0 +1,50 @@
+#!/bin/sh
+
+# unlock-keyring - unlock the default GNOME keyring over D-Bus.
+#
+# Desktop apps (Chromium, Signal, protonmail-bridge) stash their
+# encryption keys in the keyring, so e.g. yt-dlp's
+# --cookies-from-browser needs it unlocked — and yt-dlp never asks for
+# an unlock itself, it just dies with "Item is locked!".
+#
+# Asking the Secret Service to unlock succeeds silently when the
+# keyring has a blank password; otherwise the system prompter pops a
+# password dialog and we wait for the answer. With -q the dialog is
+# skipped (silent attempt only) so scripts can self-heal the
+# blank-password case without ever interrupting the user.
+#
+# usage: unlock-keyring [-q]; exits 0 iff the keyring ends up unlocked
+
+svc=org.freedesktop.secrets
+obj=/org/freedesktop/secrets
+coll=$obj/aliases/default
+
+locked() {
+	[ "$(busctl --user get-property $svc $coll \
+		org.freedesktop.Secret.Collection Locked 2>/dev/null)" = "b true" ]
+}
+
+locked || exit 0
+
+prompt="$(busctl --user call $svc $obj org.freedesktop.Secret.Service \
+	Unlock ao 1 $coll 2>/dev/null | awk '{gsub(/"/, "", $NF); print $NF}')"
+
+# "/" means no prompt was needed (blank password): already unlocked now
+if [ -n "$prompt" ] && [ "$prompt" != "/" ]; then
+	if [ "$1" = "-q" ]; then
+		busctl --user call $svc "$prompt" \
+			org.freedesktop.Secret.Prompt Dismiss >/dev/null 2>&1
+	else
+		busctl --user call $svc "$prompt" \
+			org.freedesktop.Secret.Prompt Prompt s "" >/dev/null 2>&1
+		i=0
+		while locked && [ $i -lt 60 ]; do
+			# prompt object vanishing while still locked = user dismissed
+			busctl --user introspect $svc "$prompt" >/dev/null 2>&1 || break
+			sleep 1
+			i=$((i + 1))
+		done
+	fi
+fi
+
+! locked
