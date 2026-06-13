@@ -24,7 +24,7 @@ refresh() { fetch; pkill -RTMIN+$sig "${STATUSBAR:-dwmblocks}"; }
 case "${1:-}" in
 menu)
 	[ -s "$file" ] || fetch
-	choice=$(awk -F'\t' '{pri = ($3 == "-" ? "" : " "$3); print NR": "$2 pri"  "$4}' \
+	choice=$(awk -F'\t' '{pri = ($3 == "-" ? "" : " "$3); at = ($5 == "-" || $5 == "" ? "" : " "$5); print NR": "$2 at pri"  "$4}' \
 		"$file" | dmenu -i -l 15 -p "📋 overdue/today:") || exit 0
 	n=${choice%%:*}
 	id=$(awk -F'\t' -v n="$n" 'NR == n {print $1}' "$file")
@@ -64,7 +64,7 @@ esac
 info() {
 	[ -s "$file" ] || { notify-send "📋 Todoist module" \
 		"No data yet — try a left click or check 'td list'."; return; }
-	list=$(awk -F'\t' '{pri = ($3 == "-" ? "" : " "$3); print $2 pri "  " $4}' "$file")
+	list=$(awk -F'\t' '{pri = ($3 == "-" ? "" : " "$3); at = ($5 == "-" || $5 == "" ? "" : " "$5); print $2 at pri "  " $4}' "$file")
 	updated="$(date -d "@$(stat -c %Y "$file")" +'%b%-d %-I:%M%P' 2>/dev/null)"
 	notify-send "📋 Todoist (overdue & today)" "${list:-all clear ✓}
 

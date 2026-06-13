@@ -19,9 +19,10 @@
 #   td sync                 refresh calcurse from Todoist now
 #
 # `list` prints one task per line, tab-separated:
-#   id <TAB> due-date <TAB> priority <TAB> content
-# due-date is YYYY-MM-DD or "-" (undated); priority is p1..p3 or "-"
-# (Todoist's API counts backwards: API 4 = UI p1 = most urgent).
+#   id <TAB> due-date <TAB> priority <TAB> content <TAB> time
+# due-date is a local YYYY-MM-DD or "-" (undated); priority is p1..p3 or "-"
+# (Todoist's API counts backwards: API 4 = UI p1 = most urgent); time is the
+# local clock time ("7:00PM") for timed tasks, or "-" when all-day/undated.
 
 api="https://api.todoist.com/api/v1"
 
@@ -49,6 +50,33 @@ req() { # req METHOD PATH [curl args...] -> body, fails on HTTP error
 # Todoist, so the calendar/todo window catches up without waiting for cron.
 syncsoon() { setsid -f "${0%/*}/cron/todoist-calcurse-sync" >/dev/null 2>&1; }
 
+# Todoist hands back timed tasks as RFC3339 UTC stamps ("2026-06-13T23:00:00Z");
+# date-only tasks as a plain "2026-06-13". localize reads the 4-column list/get
+# TSV on stdin and rewrites the due column into the local date, appending a 5th
+# "time" column ("7:00PM", or "-" when all-day/undated) so callers keep a plain
+# local date for sorting/comparison while still showing a real clock time.
+localize() {
+	tab=$(printf '\t')
+	while IFS="$tab" read -r id due pri content; do
+		case "$due" in
+		*T*)	d=$(date -d "$due" +%F 2>/dev/null) || d="$due"
+			t=$(date -d "$due" +'%-I:%M%p' 2>/dev/null) || t="-" ;;
+		*)	d="$due" t="-" ;;
+		esac
+		printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$d" "$pri" "$content" "$t"
+	done
+}
+
+# One-line local rendering of a raw due value for confirmations: "YYYY-MM-DD",
+# or "YYYY-MM-DD 7:00PM" for timed tasks (passes non-timestamps through as-is).
+fmtdue() {
+	case "$1" in
+	*T*)	printf '%s %s' "$(date -d "$1" +%F 2>/dev/null || printf %s "$1")" \
+			"$(date -d "$1" +'%-I:%M%p' 2>/dev/null)" ;;
+	*)	printf '%s' "$1" ;;
+	esac
+}
+
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
 
@@ -60,7 +88,9 @@ add)
 		echo "td: add failed: $resp" >&2
 		exit 1
 	}
-	echo "$resp" | jq -r '"added: \(.content)\(.due.date // "" | if . == "" then "" else "  (\(.))" end)"'
+	due=$(echo "$resp" | jq -r '.due.date // ""')
+	[ -n "$due" ] && due="  ($(fmtdue "$due"))"
+	echo "added: $(echo "$resp" | jq -r '.content')$due"
 	syncsoon
 	;;
 list)
@@ -82,7 +112,7 @@ list)
 		[.id,
 		 (.due.date // "-"),
 		 (if .priority > 1 then "p\(5 - .priority)" else "-" end),
-		 .content] | @tsv'
+		 .content] | @tsv' | localize
 	;;
 get)
 	# Same TSV as list, but priority column shows "done <date>" once the
@@ -97,7 +127,7 @@ get)
 		 (.due.date // "-"),
 		 (if .checked then "done \(.completed_at[:10] // "?")"
 		  elif .priority > 1 then "p\(5 - .priority)" else "-" end),
-		 .content] | @tsv'
+		 .content] | @tsv' | localize
 	;;
 done)
 	[ $# -eq 1 ] || usage
@@ -117,7 +147,7 @@ postpone)
 		echo "td: postpone failed: $resp" >&2
 		exit 1
 	}
-	echo "$resp" | jq -r '"postponed: \(.content)  (\(.due.date // .due.string))"'
+	echo "postponed: $(echo "$resp" | jq -r '.content')  ($(fmtdue "$(echo "$resp" | jq -r '.due.date // .due.string')"))"
 	syncsoon
 	;;
 sync)
