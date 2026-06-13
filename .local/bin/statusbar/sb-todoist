@@ -37,8 +37,12 @@ menu)
 	id=$(awk -F'\t' -v n="$n" 'NR == n {print $1}' "$file")
 	name=$(awk -F'\t' -v n="$n" 'NR == n {print $4}' "$file")
 	[ -n "$id" ] || exit 0
+	# Truncate the prompt so a long task name can't shove the options off
+	# screen; -l stacks the actions vertically as a second safeguard.
+	short=$(printf '%.50s' "$name")
+	[ "$short" = "$name" ] || short="$short…"
 	action=$(printf 'complete\npostpone: tomorrow\npostpone: next week\npostpone: ...\nnothing' |
-		dmenu -i -p "$name:") || exit 0
+		dmenu -i -l 5 -p "$short:") || exit 0
 	case "$action" in
 	complete) out=$(td done "$id" >/dev/null && echo "completed: $name") ;;
 	"postpone: tomorrow") out=$(td postpone "$id" tomorrow) ;;
