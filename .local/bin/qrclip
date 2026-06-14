@@ -1,0 +1,32 @@
+#!/bin/sh
+
+# Select a screen region; if it contains a QR code (or barcode), decode it and
+# copy the resolved contents to the clipboard. Shows a notify-send confirmation
+# only -- never the decoded contents, which are often secrets (OTP seeds, wifi
+# passwords, URLs).
+
+# The x-dunst-stack-tag hint makes each stage's notification replace the
+# previous one (drag -> processing -> result) instead of stacking. Harmless on
+# notification daemons that don't support it. Drop the -h args to disable.
+note() { notify-send -h string:x-dunst-stack-tag:qrclip "$@"; }
+
+ifinstalled maim zbar xclip || exit 1
+
+temp=$(mktemp -p "$XDG_RUNTIME_DIR" --suffix=.png)
+trap 'rm -f "$temp"' HUP INT QUIT TERM PWR EXIT
+
+note "Scan a QR code" "Drag a box over the QR code to copy it to your clipboard."
+
+maim -s "$temp" || exit 1
+
+note "Processing QR code…" "Decoding the selected region."
+
+# --raw drops the "QR-Code:" symbology prefix; $() strips the trailing newline.
+info="$(zbarimg -q --raw "$temp")"
+
+if [ -n "$info" ]; then
+	printf %s "$info" | xclip -selection clipboard
+	note "QR decoded" "Contents copied to clipboard."
+else
+	note "No QR code found" "Try selecting the code more precisely."
+fi
