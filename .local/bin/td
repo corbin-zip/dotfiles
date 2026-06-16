@@ -13,6 +13,7 @@
 # Usage:
 #   td add <text...>        natural language: "dentist next monday 2pm p2"
 #   td list [query]         filter query, default: overdue | today
+#   td on <date> [end]      tasks on <date>, or within [<date>, end] inclusive
 #   td get <id>             one task by id, even if completed
 #   td done <id>            complete a task
 #   td postpone <id> <when> reschedule: "tomorrow", "next sat", ...
@@ -77,6 +78,29 @@ fmtdue() {
 	esac
 }
 
+# query_tasks QUERY -> the localized TSV that `list` prints, paginating the
+# filter endpoint (200 per page) so large result sets come back whole.
+query_tasks() {
+	q="$1" cursor="" tasks=""
+	while :; do
+		page=$(req GET "/tasks/filter" -G \
+			--data-urlencode "query=$q" \
+			--data-urlencode "limit=200" \
+			${cursor:+--data-urlencode "cursor=$cursor"}) || {
+			echo "td: query failed: $page" >&2
+			return 1
+		}
+		tasks="$tasks$(echo "$page" | jq '.results[]')"
+		cursor=$(echo "$page" | jq -r '.next_cursor // empty')
+		[ -n "$cursor" ] || break
+	done
+	echo "$tasks" | jq -rs 'sort_by(.due.date // "9999-99-99")[] |
+		[.id,
+		 (.due.date // "-"),
+		 (if .priority > 1 then "p\(5 - .priority)" else "-" end),
+		 .content] | @tsv' | localize
+}
+
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
 
@@ -94,25 +118,23 @@ add)
 	syncsoon
 	;;
 list)
-	query="${*:-overdue | today}"
-	cursor="" tasks=""
-	while :; do
-		page=$(req GET "/tasks/filter" -G \
-			--data-urlencode "query=$query" \
-			--data-urlencode "limit=200" \
-			${cursor:+--data-urlencode "cursor=$cursor"}) || {
-			echo "td: list failed: $page" >&2
-			exit 1
-		}
-		tasks="$tasks$(echo "$page" | jq '.results[]')"
-		cursor=$(echo "$page" | jq -r '.next_cursor // empty')
-		[ -n "$cursor" ] || break
-	done
-	echo "$tasks" | jq -rs 'sort_by(.due.date // "9999-99-99")[] |
-		[.id,
-		 (.due.date // "-"),
-		 (if .priority > 1 then "p\(5 - .priority)" else "-" end),
-		 .content] | @tsv' | localize
+	query_tasks "${*:-overdue | today}" || exit 1
+	;;
+on)
+	[ $# -ge 1 ] && [ $# -le 2 ] || usage
+	lo=$(date -d "$1" +%F 2>/dev/null) || { echo "td: bad date: $1" >&2; exit 1; }
+	hi="$lo"
+	if [ $# -eq 2 ]; then
+		hi=$(date -d "$2" +%F 2>/dev/null) || { echo "td: bad date: $2" >&2; exit 1; }
+	fi
+	# `due before:`/`due after:` are EXCLUSIVE of their boundary date (verified
+	# against the live API), so widen each end by a day to make [lo, hi]
+	# inclusive; the awk pass then trims to the exact local-date window, which
+	# also keeps timed tasks on the calendar day they show locally.
+	after=$(date -d "$lo -1 day" +%F)
+	before=$(date -d "$hi +1 day" +%F)
+	out=$(query_tasks "due after: $after & due before: $before") || exit 1
+	printf '%s\n' "$out" | awk -F'\t' -v lo="$lo" -v hi="$hi" '$2 >= lo && $2 <= hi'
 	;;
 get)
 	# Same TSV as list, but priority column shows "done <date>" once the
