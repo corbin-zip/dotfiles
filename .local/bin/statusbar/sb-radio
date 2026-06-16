@@ -11,7 +11,7 @@
 # - Scroll steps through the live stations.
 
 live="${XDG_CACHE_HOME:-$HOME/.cache}/radio/live.tsv"
-maxage=600
+maxage=1800
 
 case $BLOCK_BUTTON in
 	1) setsid -f radio pick >/dev/null 2>&1 ;;
