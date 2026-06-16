@@ -18,6 +18,8 @@ toggle_sinks() {
     notify-send "Audio Output" "Switched to $(pactl get-default-sink)"
 }
 
+sig=18
+
 case $BLOCK_BUTTON in
     1) dmenusink ;;
     2) pavucontrol ;;
@@ -25,6 +27,9 @@ case $BLOCK_BUTTON in
     4|5) toggle_sinks ;;
     6) "$TERMINAL" -e "$EDITOR" "$0" ;;
 esac
+
+# Any interaction refreshes this block (signal 18 in dwmblocks config.h).
+[ -n "$BLOCK_BUTTON" ] && pkill -RTMIN+"$sig" "${STATUSBAR:-dwmblocks}"
 
 # Show the first 3 letters of the sink's friendly description (e.g. "OpenRun
 # Pro 2 by Shokz" -> "Ope"), rather than the raw sink name (which for Bluetooth
@@ -36,4 +41,4 @@ DESC=$(pactl --format=json list sinks 2>/dev/null | jq -r --arg d "$CURRENT_NAME
 SHORT_NAME=$(printf '%.3s' "$DESC")
 [ -z "$SHORT_NAME" ] && SHORT_NAME="Unknown"
 
-echo "$SHORT_NAME"
+echo "🎧$SHORT_NAME"
