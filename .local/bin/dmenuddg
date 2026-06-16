@@ -1,0 +1,27 @@
+#!/bin/sh
+
+# dmenuddg: centered dmenu prompt that opens whatever you type as a DuckDuckGo
+# search in a new browser window. DDG bang syntax works as typed, so
+# "!a roborock" forwards the search straight to Amazon, "!gh dwm" to GitHub,
+# and so on. Honours $BROWSER (falls back to librewolf).
+#
+# The listed items are only reminders of common bangs; free text is always
+# respected, since dmenu returns the typed input when it matches no item (or
+# on Shift+Return). Do NOT add -r: it would reject any non-listed input.
+
+# Size knobs: -fn doubles the height (default monospace:size=10), -mw doubles
+# the centered width floor (dmenu's default min_width is 500).
+q=$(printf '%s\n' \
+	'!gh github' \
+	'!w wikipedia' \
+	'!a amazon' \
+	'!r reddit' \
+	'!yt youtube' \
+	'!letterboxd letterboxd' \
+	'!lastfm last.fm' \
+	'!discogs discogs' \
+	| dmenu -c -l 8 -fn "monospace:size=20" -mw 1000 -p "DuckDuckGo:") || exit
+[ -n "$q" ] || exit
+
+# Spaces to + is all DDG needs; bangs and the rest pass through unchanged.
+exec "${BROWSER:-librewolf}" --new-window "https://duckduckgo.com/?q=${q// /+}"

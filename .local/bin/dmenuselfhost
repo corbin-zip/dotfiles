@@ -1,0 +1,45 @@
+#!/bin/sh
+
+# dmenu launcher for the LibreWolf "selfhost" bookmark folder.
+# Lists only the bookmarks directly inside that folder (nested subfolders
+# excluded — flip to include them by uncommenting the recursive query below),
+# then opens the chosen one in a new LibreWolf window.
+
+# Pick the active profile: newest places.sqlite under ~/.librewolf.
+db=$(ls -t "$HOME"/.librewolf/*/places.sqlite 2>/dev/null | head -n1)
+[ -z "$db" ] && { notify-send "dmenuselfhost" "No LibreWolf places.sqlite found."; exit 1; }
+
+tab=$(printf '\t')
+
+# Read-only via immutable=1 so it works while LibreWolf is running (the DB is
+# locked). Note: immutable ignores the -wal, so a bookmark added seconds ago
+# may not show until LibreWolf checkpoints — fine for stable selfhost links.
+# Folder looked up by title, not a hardcoded id, so it survives folder rebuilds.
+list=$(sqlite3 -separator "$tab" "file:$db?immutable=1" "
+SELECT b.title, p.url
+FROM moz_bookmarks b
+JOIN moz_places p ON b.fk = p.id
+WHERE b.type = 1
+  AND b.parent = (SELECT id FROM moz_bookmarks WHERE title='selfhost' AND type=2 LIMIT 1)
+ORDER BY b.position;")
+
+# --- Recursive variant (include nested subfolders like 'other') ---
+# Replace the query above with this if you ever want the whole subtree:
+# list=$(sqlite3 -separator "$tab" "file:$db?immutable=1" "
+# WITH RECURSIVE sub(id) AS (
+#   SELECT id FROM moz_bookmarks WHERE title='selfhost' AND type=2
+#   UNION ALL
+#   SELECT b.id FROM moz_bookmarks b JOIN sub ON b.parent=sub.id WHERE b.type=2
+# )
+# SELECT b.title, p.url FROM moz_bookmarks b
+# JOIN moz_places p ON b.fk=p.id
+# WHERE b.type=1 AND b.parent IN (SELECT id FROM sub)
+# ORDER BY b.position;")
+
+[ -z "$list" ] && { notify-send "dmenuselfhost" "selfhost folder is empty or not found."; exit 1; }
+
+choice=$(printf '%s\n' "$list" | cut -d "$tab" -f1 | dmenu -c -i -l 30 -p "selfhost:")
+[ -z "$choice" ] && exit 0
+
+url=$(printf '%s\n' "$list" | awk -F"$tab" -v c="$choice" '$1==c{print $2; exit}')
+[ -n "$url" ] && setsid -f librewolf --new-window "$url" >/dev/null 2>&1
