@@ -16,10 +16,10 @@ case $BLOCK_BUTTON in
 	6) setsid -f "$TERMINAL" -e "$EDITOR" "$0" ;;
 esac
 
-# Only display batteries if at least one has dropped below 90%.
+# Only display batteries if at least one has dropped below 75%.
 show=""
 for battery in /sys/class/power_supply/BAT?*; do
-	[ "$(cat "$battery/capacity" 2>&1)" -lt 90 ] && show=1
+	[ "$(cat "$battery/capacity" 2>&1)" -lt 75 ] && show=1
 done
 [ -z "$show" ] && printf "\\n" && exit 0
 
