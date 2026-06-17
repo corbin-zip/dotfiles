@@ -26,3 +26,23 @@
     foreground = "{color0}" # color0
     frame_color = "{color11}" # color11
     timeout = 0
+
+# Notification center capture (always on): runs notif-store for every
+# notification, so the on-disk store is a complete log. always_run_script lets
+# it fire even for notifications the DND rules below suppress. Absolute path so
+# resolution does not depend on dunst's PATH.
+[nc_capture]
+    appname = "*"
+    always_run_script = true
+    script = /home/carbon/.local/bin/notif-store
+
+# DND suppression: toggled at runtime by sb-dnd (dunstctl rule ... enable).
+# Disabled at rest (re-asserted by wal/postrun after each dunst restart). Only
+# low and normal urgency are matched, so critical alerts always pop through.
+[nc_dnd_low]
+    msg_urgency = low
+    skip_display = true
+
+[nc_dnd_normal]
+    msg_urgency = normal
+    skip_display = true

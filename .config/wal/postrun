@@ -22,6 +22,19 @@ done
 # dunst only reads its config at startup.
 pkill dunst; setsid -f dunst
 
+# The DND skip_display rules are active-by-default in the rendered config and
+# dunst forgets runtime rule toggles on restart, so re-assert them from the
+# notification-center state once the new instance answers (bounded wait).
+ncdir="${XDG_CACHE_HOME:-$HOME/.cache}/notifications"
+[ "$(cat "$ncdir/state" 2>/dev/null)" = "on" ] && ncact=enable || ncact=disable
+i=0
+while [ "$i" -lt 20 ]; do
+	dunstctl is-paused >/dev/null 2>&1 && break
+	sleep 0.1
+	i=$((i + 1))
+done
+for r in nc_dnd_low nc_dnd_normal; do dunstctl rule "$r" "$ncact" >/dev/null 2>&1; done
+
 # If running, dwm hit the key to re-read xresources colors.
 pidof dwm >/dev/null && xdotool key super+F5
 

@@ -1,31 +1,94 @@
-#!/bin/bash
+#!/bin/sh
 
-# A simple, mostly ChatGPT-written "do not disturb" widget for dwmblocks.
-# It will pause/unpause dunst, and keep track of the number of waiting
-# notifications. I frequently use it for "pomodoros"
+# dwmblocks "do not disturb" module + toggle.
+#
+# DND uses dunst skip_display rules (nc_dnd_low / nc_dnd_normal), not pause.
+# Pausing only queues notifications and then floods them onto the screen all at
+# once when you unpause; skip_display routes them straight to the
+# notification-center store (via notif-store) so they never flash, not even when
+# DND turns off. Critical urgency is never matched, so it always pops through.
+#
+# Clicks:
+#   left   toggle DND; turning it off opens the center with what you missed
+#   middle open the notification center on demand
+#   right  show this module's help
 
-# Function to check the current status of dunst
-function check_status() {
-    # Check if dunst is currently paused
-    paused=$(dunstctl is-paused)
+base="${XDG_CACHE_HOME:-$HOME/.cache}/notifications"
+entries="$base/entries"
+segdir="$base/segments"
+statef="$base/state"
+segf="$base/segment"
+mkdir -p "$entries" "$segdir"
 
-    # If dunst is paused, display number of waiting notifications with a "mute" emoji.
-    # Else, display a "bell" emoji to indicate notifications are active.
-    if [ "$paused" == "true" ]; then
-        waiting=$(dunstctl count waiting)
-        echo "🔕: $waiting"
-    else
-        echo "🔔"
-    fi
+rules="nc_dnd_low nc_dnd_normal"
+
+dnd_on() { [ "$(cat "$statef" 2>/dev/null)" = "on" ]; }
+
+# Keep dunst's runtime rule state in sync with our state file. The rules are
+# active-by-default in the rendered config, and dunst forgets runtime toggles on
+# restart, so re-asserting on every bar refresh closes those gaps cheaply.
+assert_rules() {
+	if dnd_on; then act=enable; else act=disable; fi
+	for r in $rules; do dunstctl rule "$r" "$act" >/dev/null 2>&1; done
 }
 
-# Check if the script is run with a left-click
-if [ "$BLOCK_BUTTON" = "1" ]; then
-    # Toggle the pause state of dunst
-    dunstctl set-paused toggle
-    # Signal dwmblocks to update the status
-    pkill -RTMIN+30 dwmblocks
-fi
+# Number of suppressed ("missed") notifications captured in a given segment.
+count_missed() {
+	seg="$1"
+	{ [ -n "$seg" ] && [ -d "$entries/$seg" ]; } || { echo 0; return; }
+	n=0
+	for m in "$entries/$seg"/*/meta; do
+		[ -f "$m" ] || continue
+		grep -qx 'suppressed=1' "$m" && n=$((n + 1))
+	done
+	echo "$n"
+}
 
-# Run the function to check the current status and print it
-check_status
+# Open the notification center in a floating terminal. With a segment id it
+# opens scoped to that DND session; with none it shows the whole history.
+launch_center() {
+	setsid -f "${TERMINAL:-st}" -n notifcenter -c notifcenter \
+		-e notif-center "$@" >/dev/null 2>&1
+}
+
+enable_dnd() {
+	now=$(date +%s)
+	printf 'start=%s\ndnd=1\n' "$now" >"$segdir/$now"
+	printf '%s' "$now" >"$segf"
+	printf 'on' >"$statef"
+	for r in $rules; do dunstctl rule "$r" enable >/dev/null 2>&1; done
+}
+
+disable_dnd() {
+	now=$(date +%s)
+	for r in $rules; do dunstctl rule "$r" disable >/dev/null 2>&1; done
+	ended=$(cat "$segf" 2>/dev/null)
+	# Stamp the DND segment's end time, then open a fresh normal segment.
+	[ -n "$ended" ] && printf 'end=%s\n' "$now" >>"$segdir/$ended"
+	printf 'start=%s\ndnd=0\n' "$now" >"$segdir/$now"
+	printf '%s' "$now" >"$segf"
+	printf 'off' >"$statef"
+	# Review what was missed, but only if the session captured something.
+	[ "$(count_missed "$ended")" -gt 0 ] && launch_center "$ended"
+}
+
+case $BLOCK_BUTTON in
+	1) if dnd_on; then disable_dnd; else enable_dnd; fi
+		pkill -RTMIN+30 "${STATUSBAR:-dwmblocks}" ;;
+	2) launch_center ;;
+	3) notify-send "🔔 Do Not Disturb module" "\- 🔔 shows notifications are live.
+- 🔕:N shows DND is on, with N notifications missed so far.
+- Left click toggles DND; turning it off opens the center with what you missed.
+- Middle click opens the notification center (full history).
+- Critical alerts still come through while DND is on.
+- In the center: j/k/h/l move, x dismiss, dd row, gg/G top/bottom, q quit." ;;
+	6) setsid -f "$TERMINAL" -e "$EDITOR" "$0" ;;
+esac
+
+assert_rules
+
+if dnd_on; then
+	printf '🔕:%s\n' "$(count_missed "$(cat "$segf" 2>/dev/null)")"
+else
+	printf '🔔\n'
+fi

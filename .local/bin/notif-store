@@ -1,0 +1,76 @@
+#!/bin/sh
+
+# Called by dunst (the nc_capture rule) for every notification. Appends a
+# tagged entry to the notification-center store so it has a complete on-disk
+# log, independent of dunst's volatile in-memory history. Tags whether DND
+# suppressed the popup (= "missed") and which segment the entry belongs to.
+# Exits 0 on any error so dunst never logs a script failure.
+
+base="${XDG_CACHE_HOME:-$HOME/.cache}/notifications"
+entries="$base/entries"
+segdir="$base/segments"
+mkdir -p "$entries" "$segdir" 2>/dev/null || exit 0
+
+state=$(cat "$base/state" 2>/dev/null)
+seg=$(cat "$base/segment" 2>/dev/null)
+
+# No segment yet (no DND toggle since boot): assign a default normal segment.
+if [ -z "$seg" ]; then
+	seg=0
+	[ -f "$segdir/0" ] || printf 'start=%s\ndnd=0\n' "$(date +%s)" >"$segdir/0"
+fi
+
+# suppressed = DND on AND not critical. Critical always pops, so it is never
+# something the user "missed".
+suppressed=0
+if [ "$state" = "on" ]; then
+	case "$DUNST_URGENCY" in
+	CRITICAL | critical) ;;
+	*) suppressed=1 ;;
+	esac
+fi
+
+ts=$(date +%s)
+rand=$(od -An -N3 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
+[ -n "$rand" ] || rand=$$
+# Entries are partitioned by segment so per-session counts (sb-dnd) and pruning
+# stay cheap as the overall log grows.
+dir="$entries/${seg}/${ts}-${rand}"
+mkdir -p "$dir" 2>/dev/null || exit 0
+
+# Copy a real on-disk icon into the entry so it survives the source file
+# (often a transient temp path) vanishing before the center is opened.
+icon=$DUNST_ICON_PATH
+case "$DUNST_ICON_PATH" in
+/*)
+	if [ -f "$DUNST_ICON_PATH" ]; then
+		ext=${DUNST_ICON_PATH##*.}
+		case "$ext" in
+		png | svg | jpg | jpeg | gif | xpm | webp | bmp) : ;;
+		*) ext=img ;;
+		esac
+		if cp -- "$DUNST_ICON_PATH" "$dir/icon.$ext" 2>/dev/null; then
+			icon="icon.$ext"
+		fi
+	fi
+	;;
+esac
+
+# base64 the free-text fields so newlines / pango markup can't break the
+# line-oriented meta format.
+enc() { printf '%s' "$1" | base64 | tr -d '\n'; }
+
+{
+	printf 'id=%s\n' "$DUNST_ID"
+	printf 'timestamp=%s\n' "$ts"
+	printf 'appname=%s\n' "$DUNST_APP_NAME"
+	printf 'urgency=%s\n' "$DUNST_URGENCY"
+	printf 'category=%s\n' "$DUNST_CATEGORY"
+	printf 'segment=%s\n' "$seg"
+	printf 'suppressed=%s\n' "$suppressed"
+	printf 'icon=%s\n' "$icon"
+	printf 'summary_b64=%s\n' "$(enc "$DUNST_SUMMARY")"
+	printf 'body_b64=%s\n' "$(enc "$DUNST_BODY")"
+} >"$dir/meta" 2>/dev/null
+
+exit 0

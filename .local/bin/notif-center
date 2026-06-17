@@ -1,0 +1,426 @@
+#!/bin/bash
+
+# notif-center: a single-column TUI notification center for the dunst-backed
+# store written by notif-store. Renders captured notifications as a scrolling
+# list of accent-bar cards with vim-style navigation.
+#
+# Notifications are grouped into "segments" (a contiguous run of one DND state);
+# a labelled divider precedes each segment and DND segments are marked so you
+# can see at a glance what you missed. The on-disk store is the source of truth,
+# so dismissing removes the entry from disk.
+#
+# The body keeps its own line breaks and is capped at BODY_CAP lines when
+# collapsed; i/Enter expands the selected card to show all of it. Text reflows
+# on a word boundary using a display-width measure (wc -L) so wide glyphs
+# (emoji) never split a word or overrun the line. The time and urgency ride on
+# the right of the (bold) summary line; the source app name is not shown.
+#
+# Usage: notif-center [segment-id]   (jumps the cursor to that segment on open)
+#
+# Keys: j/k or arrows move, i/Enter expand, x dismiss, D clear all,
+#       gg/G top/bottom, r reload, q quit.
+
+STORE="${XDG_CACHE_HOME:-$HOME/.cache}/notifications"
+SCOPE=${1:-}
+
+# --- geometry -------------------------------------------------------------
+BARW=2        # display width of the "<glyph><space>" card prefix
+BODY_CAP=3    # collapsed body line cap; i/Enter expands to the full body
+
+COLS=80
+LINES=24
+INNER=78 # text width inside the accent bar (COLS - BARW)
+cur=0
+SCROLL=0
+NOW=0
+DASHES=""
+
+# Return-value channel: helpers set $R instead of echoing, to avoid forking a
+# subshell per call during layout.
+R=""
+
+declare -A SEG_START SEG_END SEG_DND SEG_MISSED DW EXPANDED
+declare -a E_TS E_APP E_URG E_SUM E_BODY E_SEG E_SUPP E_DIR
+declare -a VLINE VOWN ENT_Y ENT_H WRAPPED
+
+# --- data load ------------------------------------------------------------
+load() {
+	E_TS=(); E_APP=(); E_URG=(); E_SUM=(); E_BODY=()
+	E_SEG=(); E_SUPP=(); E_DIR=()
+	SEG_START=(); SEG_END=(); SEG_DND=(); SEG_MISSED=()
+
+	local sf id k vv
+	for sf in "$STORE"/segments/*; do
+		[ -f "$sf" ] || continue
+		id=${sf##*/}
+		local st="" en="" dn=0
+		while IFS='=' read -r k vv; do
+			case $k in
+			start) st=$vv ;;
+			end) en=$vv ;;
+			dnd) dn=$vv ;;
+			esac
+		done <"$sf"
+		SEG_START[$id]=$st; SEG_END[$id]=$en; SEG_DND[$id]=$dn; SEG_MISSED[$id]=0
+	done
+
+	local list m d ts
+	list=$(
+		for m in "$STORE"/entries/*/*/meta; do
+			[ -f "$m" ] || continue
+			d=${m%/meta}; ts=${d##*/}; ts=${ts%%-*}
+			printf '%s\t%s\n' "$ts" "$d"
+		done | sort -rn -k1,1
+	)
+	[ -n "$list" ] || return
+
+	local idx app urg seg supp sb bb
+	while IFS=$'\t' read -r ts d; do
+		[ -n "$d" ] && [ -f "$d/meta" ] || continue
+		app=""; urg=""; seg=""; supp=0; sb=""; bb=""
+		while IFS='=' read -r k vv; do
+			case $k in
+			appname) app=$vv ;;
+			urgency) urg=$vv ;;
+			segment) seg=$vv ;;
+			suppressed) supp=$vv ;;
+			summary_b64) sb=$vv ;;
+			body_b64) bb=$vv ;;
+			esac
+		done <"$d/meta"
+
+		idx=${#E_TS[@]}
+		E_TS[idx]=$ts; E_APP[idx]=$app; E_URG[idx]=$urg; E_SEG[idx]=$seg
+		E_SUPP[idx]=$supp; E_DIR[idx]=$d
+		# Summary is a title: flatten to one line. Body keeps its newlines as
+		# hard breaks (tabs/CRs become spaces); build_layout wraps each line.
+		E_SUM[idx]=$(printf '%s' "$sb" | base64 -d 2>/dev/null | tr '\n\t\r' '   ')
+		E_BODY[idx]=$(printf '%s' "$bb" | base64 -d 2>/dev/null | tr '\t\r' '  ')
+
+		[ "$supp" = 1 ] && SEG_MISSED[$seg]=$(( ${SEG_MISSED[$seg]:-0} + 1 ))
+		[ -n "${SEG_DND[$seg]+x}" ] || { SEG_DND[$seg]=0; SEG_START[$seg]=$ts; SEG_END[$seg]=""; }
+	done <<<"$list"
+}
+
+# --- width-aware text helpers (set $R) -----------------------------------
+dword() { # $1 word -> R = display width in cells (cached per word)
+	if [ -n "${DW[$1]+x}" ]; then R=${DW[$1]}; return; fi
+	R=$(printf '%s' "$1" | wc -L 2>/dev/null)
+	[ -n "$R" ] || R=${#1}
+	DW[$1]=$R
+}
+
+wrap() { # $1 text $2 width -> WRAPPED[] (greedy word wrap, display-width aware)
+	WRAPPED=()
+	local width=$2 line="" lw=0 word ww
+	for word in $1; do
+		dword "$word"; ww=$R
+		# A single word wider than the line gets hard-split (URLs, hashes).
+		while [ "$ww" -gt "$width" ]; do
+			[ -n "$line" ] && { WRAPPED+=("$line"); line=""; lw=0; }
+			WRAPPED+=("${word:0:width-1}…")
+			word=${word:width-1}
+			dword "$word"; ww=$R
+		done
+		if [ -z "$line" ]; then
+			line=$word; lw=$ww
+		elif [ $((lw + 1 + ww)) -le "$width" ]; then
+			line="$line $word"; lw=$((lw + 1 + ww))
+		else
+			WRAPPED+=("$line"); line=$word; lw=$ww
+		fi
+	done
+	[ -n "$line" ] && WRAPPED+=("$line")
+}
+
+reltime() { # $1 epoch -> R
+	local d=$((NOW - $1))
+	((d < 0)) && d=0
+	if ((d < 45)); then R="now"
+	elif ((d < 3600)); then R="$((d / 60))m"
+	elif ((d < 86400)); then R="$((d / 3600))h"
+	elif ((d < 604800)); then R="$((d / 86400))d"
+	else R=$(date -d "@$1" +%m/%d 2>/dev/null); fi
+}
+
+hm() { # $1 epoch -> R ("" if empty)
+	if [ -n "$1" ]; then R=$(date -d "@$1" +%H:%M 2>/dev/null); else R=""; fi
+}
+
+clamp_cur() {
+	local n=${#E_TS[@]}
+	((n == 0)) && { cur=0; return; }
+	((cur >= n)) && cur=$((n - 1))
+	((cur < 0)) && cur=0
+}
+
+# --- card / divider rendering --------------------------------------------
+build_summary() { # $1 entry -> R (bold summary + dim right-aligned time/urgency)
+	local e=$1 bold=$'\e[1m' dim=$'\e[2m' e0=$'\e[0m'
+	local dot=""
+	[ "${E_SUPP[e]}" = 1 ] && dot="• "
+	reltime "${E_TS[e]}"
+	local meta="$R · ${E_URG[e]:-NORMAL}"
+	local left="${dot}${E_SUM[e]}"
+	dword "$meta"; local mw=$R
+	dword "$left"; local lw=$R
+	local gap=$((INNER - lw - mw))
+	if ((gap < 1)); then
+		local maxl=$((INNER - mw - 2)); ((maxl < 1)) && maxl=1
+		left="${left:0:maxl}…"; dword "$left"; lw=$R
+		gap=$((INNER - lw - mw)); ((gap < 1)) && gap=1
+	fi
+	printf -v R '%s%s%s%*s%s%s%s' "$bold" "$left" "$e0" "$gap" '' "$dim" "$meta" "$e0"
+}
+
+render_divider() { # $1 seg -> R (full-width styled divider)
+	local seg=$1 dn=${SEG_DND[$seg]:-0} ms=${SEG_MISSED[$seg]:-0}
+	local label col
+	if [ "$dn" = 1 ]; then
+		hm "${SEG_START[$seg]}"; local s=$R
+		hm "${SEG_END[$seg]}"; local en=$R
+		label="DND  ${s}"
+		[ -n "$en" ] && label+="–${en}"
+		((ms > 0)) && label+="  ·  ${ms} missed"
+		col=$'\e[1;33m'
+	else
+		hm "${SEG_START[$seg]}"
+		label="${R:-recent}"
+		col=$'\e[2m'
+	fi
+	local base="── ${label} "
+	dword "$base"; local bw=$R
+	local fill=$((COLS - bw)); ((fill < 0)) && fill=0
+	printf -v R '%s%s%s\e[0m' "$col" "$base" "${DASHES:0:fill}"
+}
+
+# --- layout ---------------------------------------------------------------
+# Builds the virtual line buffer: VLINE[i] is styled content (no bar), VOWN[i]
+# is the owning entry index (-1 for dividers/blanks). The bar glyph and its
+# selection colour are applied per redraw in draw(), so navigation stays cheap.
+build_layout() {
+	VLINE=(); VOWN=(); ENT_Y=(); ENT_H=()
+	local i=0 n=${#E_TS[@]} prevseg="__none__" seg
+	local e0=$'\e[0m' dim=$'\e[2m'
+	NOW=$(date +%s)
+	while [ $i -lt $n ]; do
+		seg=${E_SEG[i]}
+		if [ "$seg" != "$prevseg" ]; then
+			((${#VLINE[@]} > 0)) && { VLINE+=(""); VOWN+=(-1); }
+			render_divider "$seg"; VLINE+=("$R"); VOWN+=(-1)
+			VLINE+=(""); VOWN+=(-1)
+			prevseg=$seg
+		fi
+
+		ENT_Y[i]=${#VLINE[@]}
+		# First line: bold summary with the time/urgency right-aligned.
+		build_summary "$i"; VLINE+=("$R"); VOWN+=("$i")
+
+		# Body: keep its own newlines as hard breaks, wrap each paragraph, then
+		# cap at BODY_CAP lines (with a hint) unless this card is expanded.
+		local -a blines=()
+		local para k
+		if [ -n "${E_BODY[i]}" ]; then
+			while IFS= read -r para; do
+				if [ -z "$para" ]; then blines+=("")
+				else wrap "$para" "$INNER"; blines+=("${WRAPPED[@]}"); fi
+			done <<<"${E_BODY[i]}"
+		fi
+
+		local bl=${#blines[@]} shown expanded=0
+		[ -n "${EXPANDED[$i]+x}" ] && expanded=1
+		if [ $expanded = 1 ] || [ $bl -le $BODY_CAP ]; then shown=$bl
+		else shown=$BODY_CAP; fi
+		for ((k = 0; k < shown; k++)); do
+			VLINE+=("${blines[k]}"); VOWN+=("$i")
+		done
+		if [ $shown -lt $bl ]; then
+			VLINE+=("${dim}… +$((bl - shown)) more  ·  i to expand${e0}"); VOWN+=("$i")
+		elif [ $expanded = 1 ] && [ $bl -gt $BODY_CAP ]; then
+			VLINE+=("${dim}i to collapse${e0}"); VOWN+=("$i")
+		fi
+
+		ENT_H[i]=$(( ${#VLINE[@]} - ENT_Y[i] ))
+		VLINE+=(""); VOWN+=(-1)
+		i=$((i + 1))
+	done
+}
+
+# --- scroll / draw --------------------------------------------------------
+fix_scroll() {
+	local n=${#E_TS[@]} avail=$((LINES - 1))
+	((n == 0)) && { SCROLL=0; return; }
+	local top=${ENT_Y[cur]} h=${ENT_H[cur]} bot vtop
+	bot=$((top + h - 1)); vtop=$top
+	# Pull the preceding blank + divider into view at a segment's first card.
+	((vtop > 0)) && [ "${VOWN[vtop - 1]}" = -1 ] && vtop=$((vtop - 1))
+	((vtop > 0)) && [ "${VOWN[vtop - 1]}" = -1 ] && vtop=$((vtop - 1))
+	((top < SCROLL)) && SCROLL=$top
+	((vtop < SCROLL)) && SCROLL=$vtop
+	if ((bot >= SCROLL + avail)); then
+		SCROLL=$((bot - avail + 1))
+		((SCROLL > top)) && SCROLL=$top # keep header visible for tall cards
+	fi
+	local maxscroll=$(( ${#VLINE[@]} - avail ))
+	((maxscroll < 0)) && maxscroll=0
+	((SCROLL > maxscroll)) && SCROLL=$maxscroll
+	((SCROLL < 0)) && SCROLL=0
+}
+
+draw() {
+	NOW=$(date +%s)
+	local avail=$((LINES - 1)) total=${#E_TS[@]}
+
+	if ((total == 0)); then
+		local msg="No notifications.  (q to quit)"
+		printf '\e[2J\e[H'
+		printf '\e[%d;%dH%s' $((LINES / 2)) $(((COLS - ${#msg}) / 2)) "$msg"
+		printf '\e[%d;1H' "$LINES"
+		return
+	fi
+
+	local e0=$'\e[0m' sel=$'\e[1;36m' red=$'\e[31m' dim=$'\e[2m'
+	local out=$'\e[H' sl ci o barcol
+	for ((sl = 0; sl < avail; sl++)); do
+		ci=$((SCROLL + sl))
+		if ((ci >= ${#VLINE[@]})); then
+			out+=$'\e[K'
+		elif [ "${VOWN[ci]}" = -1 ]; then
+			out+="${VLINE[ci]}"$'\e[K'
+		else
+			o=${VOWN[ci]}
+			if [ "$o" = "$cur" ]; then barcol=$sel
+			else
+				case ${E_URG[o]} in
+				CRITICAL | critical) barcol=$red ;;
+				LOW | low) barcol=$dim ;;
+				*) barcol=$e0 ;;
+				esac
+			fi
+			out+="${barcol}┃${e0} ${VLINE[ci]}"$'\e[K'
+		fi
+		((sl < avail - 1)) && out+=$'\r\n'
+	done
+
+	local pos=$((cur + 1))
+	local foot=" [${pos}/${total}]  j/k move · i/Enter expand · x dismiss · D clear · gg/G · r reload · q quit "
+	((${#foot} > COLS)) && foot=${foot:0:COLS}
+	printf -v foot '%s%*s' "$foot" $((COLS - ${#foot})) ''
+	out+=$'\r\n'$'\e[7m'"${foot}"$'\e[0m'
+	printf '%s' "$out"
+	printf '\e[%d;1H' "$LINES"
+}
+
+# --- navigation -----------------------------------------------------------
+move_j() { ((cur + 1 < ${#E_TS[@]})) && cur=$((cur + 1)); }
+move_k() { ((cur > 0)) && cur=$((cur - 1)); }
+move_gg() { cur=0; }
+move_G() { cur=$(( ${#E_TS[@]} - 1 )); ((cur < 0)) && cur=0; }
+
+# --- mutations ------------------------------------------------------------
+reload() { EXPANDED=(); load; clamp_cur; build_layout; fix_scroll; }
+
+toggle_expand() {
+	((${#E_TS[@]} > 0)) || return
+	if [ -n "${EXPANDED[$cur]+x}" ]; then unset 'EXPANDED[$cur]'
+	else EXPANDED[$cur]=1; fi
+	build_layout; fix_scroll
+}
+
+dismiss_one() {
+	((${#E_TS[@]} > 0)) || return
+	rm -rf -- "${E_DIR[cur]}"
+	reload
+}
+
+confirm_clear() {
+	((${#E_TS[@]} > 0)) || return
+	printf '\e[%d;1H\e[7m Clear ALL notifications? y/n \e[0m\e[K' "$LINES"
+	local a; IFS= read -rsn1 a
+	[ "$a" = y ] || return
+	local e
+	for ((e = 0; e < ${#E_TS[@]}; e++)); do rm -rf -- "${E_DIR[e]}"; done
+	reload
+}
+
+# --- main -----------------------------------------------------------------
+recompute() {
+	local sz
+	sz=$(stty size 2>/dev/null) || sz="24 80"
+	LINES=${sz%% *}; COLS=${sz##* }
+	((LINES < 4)) && LINES=24
+	((COLS < 4)) && COLS=80
+	INNER=$((COLS - BARW)); ((INNER < 10)) && INNER=10
+	build_layout
+	clamp_cur
+	fix_scroll
+}
+
+cleanup() { tput rmcup 2>/dev/null; tput cnorm 2>/dev/null; stty echo 2>/dev/null; }
+
+main() {
+	# Refuse to run without a controlling terminal. Launched headlessly (stdin
+	# from /dev/null, e.g. an orphaned capture or a stray "st -e"), every read
+	# returns instant EOF and the loop would pin a core. An interactive TUI has
+	# no reason to run detached anyway.
+	if [ ! -t 0 ]; then
+		printf 'notif-center: stdin is not a terminal; refusing to run.\n' >&2
+		exit 1
+	fi
+
+	# Pre-build a long run of box dashes for cheap slicing during redraws.
+	local i s=""
+	for ((i = 0; i < 512; i++)); do s+="─"; done
+	DASHES=$s
+
+	load
+	if [ -n "$SCOPE" ]; then
+		for ((i = 0; i < ${#E_TS[@]}; i++)); do
+			[ "${E_SEG[i]}" = "$SCOPE" ] && { cur=$i; break; }
+		done
+	fi
+
+	trap 'winch=1' WINCH
+	trap cleanup EXIT INT TERM
+	tput smcup 2>/dev/null; tput civis 2>/dev/null; stty -echo 2>/dev/null
+
+	recompute
+	draw
+	local key k2 rest rc
+	while :; do
+		if [ "${winch:-0}" = 1 ]; then winch=0; recompute; draw; fi
+		IFS= read -rsn1 key; rc=$?
+		# rc>128: read interrupted by a signal (WINCH) before any byte; loop so
+		# the top-of-loop handler can redraw. rc!=0 otherwise: genuine EOF on a
+		# closed/non-tty stdin, so quit. Keying the decision off rc (not the
+		# winch flag) means a stuck flag can never turn EOF into an endless spin.
+		if [ "$rc" -gt 128 ]; then
+			continue
+		elif [ "$rc" -ne 0 ]; then
+			break
+		fi
+		case $key in
+		q) break ;;
+		j) move_j ;;
+		k) move_k ;;
+		G) move_G ;;
+		g) IFS= read -rsn1 -t 1 k2; [ "$k2" = g ] && move_gg ;;
+		x) dismiss_one ;;
+		D) confirm_clear ;;
+		r) reload ;;
+		i | ' ' | '' | $'\n' | $'\r') toggle_expand ;;
+		$'\e')
+			IFS= read -rsn2 -t 0.001 rest
+			case $rest in
+			'[A') move_k ;;
+			'[B') move_j ;;
+			'[C') move_j ;;
+			'[D') move_k ;;
+			esac
+			;;
+		esac
+		clamp_cur; fix_scroll; draw
+	done
+}
+
+main

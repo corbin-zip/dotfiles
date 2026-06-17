@@ -1,0 +1,29 @@
+#!/bin/sh
+
+# Prune notification-center entries older than N days so the always-on capture
+# store does not grow unbounded. Add to crontab, e.g. daily:
+#   0 4 * * * ~/.local/bin/cron/notif-prune
+# Needs no DISPLAY/DBUS (pure filesystem).
+
+base="${XDG_CACHE_HOME:-$HOME/.cache}/notifications"
+days=30
+[ -d "$base/entries" ] || exit 0
+
+# Drop old per-notification entry dirs.
+find "$base/entries" -mindepth 2 -maxdepth 2 -type d -mtime +"$days" \
+	-exec rm -rf {} + 2>/dev/null
+
+# Remove now-empty per-segment dirs.
+find "$base/entries" -mindepth 1 -maxdepth 1 -type d -empty -delete 2>/dev/null
+
+# Drop segment meta files whose entries are gone, except the current segment.
+cur=$(cat "$base/segment" 2>/dev/null)
+for sf in "$base/segments"/*; do
+	[ -f "$sf" ] || continue
+	id=${sf##*/}
+	[ "$id" = "$cur" ] && continue
+	[ -d "$base/entries/$id" ] && continue
+	rm -f "$sf"
+done
+
+exit 0
