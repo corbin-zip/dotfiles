@@ -123,3 +123,4 @@ function y() {
 }
 
 eval "$(zoxide init zsh)"
+command -v wisdom >/dev/null && wisdom d
