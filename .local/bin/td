@@ -15,7 +15,9 @@
 #   td list [query]         filter query, default: overdue | today
 #   td on <date> [end]      tasks on <date>, or within [<date>, end] inclusive
 #   td get <id>             one task by id, even if completed
+#   td projects             list projects, tab-separated: id <TAB> name
 #   td done <id>            complete a task
+#   td move <id> <project>  move a task to a project (name or id)
 #   td postpone <id> <when> reschedule: "tomorrow", "next sat", ...
 #   td sync                 refresh calcurse from Todoist now
 #
@@ -101,6 +103,25 @@ query_tasks() {
 		 .content] | @tsv' | localize
 }
 
+# Paginate GET /projects (200 per page) -> one project per line, tab-separated:
+# id <TAB> name (name verbatim, so any emoji/spaces survive). Shared by the
+# `projects` command and `move`'s name resolution. NO hardcoded projects: the
+# list is always whatever the account holds.
+projects_tsv() {
+	cursor=""
+	while :; do
+		page=$(req GET "/projects" -G \
+			--data-urlencode "limit=200" \
+			${cursor:+--data-urlencode "cursor=$cursor"}) || {
+			echo "td: projects query failed: $page" >&2
+			return 1
+		}
+		echo "$page" | jq -r '.results[] | [.id, .name] | @tsv'
+		cursor=$(echo "$page" | jq -r '.next_cursor // empty')
+		[ -n "$cursor" ] || break
+	done
+}
+
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
 
@@ -151,6 +172,10 @@ get)
 		  elif .priority > 1 then "p\(5 - .priority)" else "-" end),
 		 .content] | @tsv' | localize
 	;;
+projects)
+	[ $# -eq 0 ] || usage
+	projects_tsv || exit 1
+	;;
 done)
 	[ $# -eq 1 ] || usage
 	resp=$(req POST "/tasks/$1/close") || {
@@ -158,6 +183,58 @@ done)
 		exit 1
 	}
 	echo "completed: $1"
+	syncsoon
+	;;
+move)
+	# Move a task to a project. The project is given by id, by exact name, or
+	# by a unique case-insensitive substring of a name ("td move <id> doctor"
+	# hits "🥼 Doctor"); ambiguous or unmatched targets abort with the
+	# candidates listed. <project> takes the rest of the args, so multi-word
+	# names need no quoting.
+	[ $# -ge 2 ] || usage
+	task="$1"
+	shift
+	target="$*"
+
+	projs=$(projects_tsv) || exit 1
+
+	# Resolve in precedence order: exact id, then exact name (case-
+	# insensitive), then unique case-insensitive substring of a name.
+	resolve() { # resolve MODE -> matching "id<TAB>name" lines from $projs
+		printf '%s\n' "$projs" | awk -F'\t' -v t="$target" -v mode="$1" '
+			BEGIN { lt = tolower(t) }
+			{
+				ln = tolower($2)
+				if (mode == "id" && $1 == t) print
+				else if (mode == "name" && ln == lt) print
+				else if (mode == "sub" && index(ln, lt)) print
+			}'
+	}
+
+	hit=$(resolve id)
+	[ -n "$hit" ] || hit=$(resolve name)
+	[ -n "$hit" ] || hit=$(resolve sub)
+
+	n=$(printf '%s\n' "$hit" | grep -c .)
+	if [ "$n" -eq 0 ]; then
+		echo "td: no project matching '$target'" >&2
+		exit 1
+	elif [ "$n" -gt 1 ]; then
+		echo "td: '$target' is ambiguous; matches:" >&2
+		printf '%s\n' "$hit" >&2
+		exit 1
+	fi
+
+	pid=$(printf '%s' "$hit" | cut -f1)
+	pname=$(printf '%s' "$hit" | cut -f2)
+
+	body=$(jq -n --arg pid "$pid" '{project_id: $pid}') || exit 1
+	resp=$(req POST "/tasks/$task/move" -H "Content-Type: application/json" -d "$body") || {
+		echo "td: move failed: $resp" >&2
+		exit 1
+	}
+	content=$(echo "$resp" | jq -r 'if type == "array" then .[0].content else .content end')
+	echo "moved: $content -> $pname"
 	syncsoon
 	;;
 postpone)
